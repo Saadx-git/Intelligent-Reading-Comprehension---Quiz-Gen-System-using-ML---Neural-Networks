@@ -1,0 +1,238 @@
+
+<style>
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.wrap{padding:1rem 0}
+.task-block{margin-bottom:1.5rem;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden}
+.task-header{padding:0.75rem 1rem;display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none}
+.task-header:hover{background:var(--color-background-secondary)}
+.task-num{font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.task-title{font-size:15px;font-weight:500;color:var(--color-text-primary);flex:1}
+.tag{font-size:11px;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.chevron{font-size:12px;color:var(--color-text-tertiary);transition:transform 0.2s}
+.chevron.open{transform:rotate(90deg)}
+.subtasks{border-top:0.5px solid var(--color-border-tertiary);display:none}
+.subtasks.open{display:block}
+.sub{padding:0.6rem 1rem 0.6rem 2.8rem;border-bottom:0.5px solid var(--color-border-tertiary);font-size:14px;color:var(--color-text-secondary);line-height:1.5;display:flex;gap:8px;align-items:flex-start}
+.sub:last-child{border-bottom:none}
+.sub-label{font-size:11px;font-weight:500;color:var(--color-text-tertiary);min-width:72px;padding-top:2px}
+.marks{font-size:12px;color:var(--color-text-tertiary);margin-left:auto;white-space:nowrap;padding-top:2px}
+.phase-label{font-size:11px;font-weight:500;padding:0.4rem 1rem;background:var(--color-background-secondary);color:var(--color-text-tertiary);letter-spacing:0.05em;text-transform:uppercase;border-bottom:0.5px solid var(--color-border-tertiary)}
+.score-bar{display:flex;gap:8px;flex-wrap:wrap;padding:0.75rem 1rem;background:var(--color-background-secondary);border-radius:var(--border-radius-lg);margin-bottom:1.5rem;border:0.5px solid var(--color-border-tertiary)}
+.score-chip{font-size:12px;padding:3px 10px;border-radius:20px}
+</style>
+<h2 class="sr-only">Full task list for the RACE Reading Comprehension project, organized by phase</h2>
+<div class="wrap">
+
+<div class="score-bar">
+  <span style="font-size:13px;font-weight:500;color:var(--color-text-primary);flex:1">100/100 marks — click any task to expand subtasks</span>
+  <span class="score-chip" style="background:#EAF3DE;color:#27500A">EDA 10</span>
+  <span class="score-chip" style="background:#E6F1FB;color:#0C447C">Model A 40</span>
+  <span class="score-chip" style="background:#EEEDFE;color:#3C3489">Model B 25</span>
+  <span class="score-chip" style="background:#FAEEDA;color:#633806">UI 15</span>
+  <span class="score-chip" style="background:#F1EFE8;color:#444441">Report+Code 10</span>
+</div>
+
+<div id="tasks"></div>
+</div>
+
+<script>
+const tasks=[
+  {
+    phase:"Phase 1 — Data & Exploration",
+    id:"T1",title:"Set up project repo & environment",tag:"Setup",color:"#F1EFE8",tc:"#444441",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Create GitHub repo with the exact folder structure from docs: data/raw, data/processed, models/model_a, models/model_b, src/, ui/, notebooks/, tests/, report/"},
+      {label:"Subtask 2","text":"Write requirements.txt with pinned versions: scikit-learn, pandas, numpy, gensim, xgboost, sentence-transformers, streamlit, joblib"},
+      {label:"Subtask 3","text":"Write README.md with setup instructions, how to train models, and how to run the UI"},
+    ]
+  },
+  {
+    phase:"Phase 1 — Data & Exploration",
+    id:"T2",title:"Load & explore RACE dataset (EDA)",tag:"EDA · 10 marks",color:"#EAF3DE",tc:"#27500A",marks:"10/100",
+    subs:[
+      {label:"Subtask 1","text":"Download RACE CSV from Kaggle; load train/dev/test splits with pandas.read_csv() and verify shapes (~87,866 train rows, columns: id, article, question, A, B, C, D, answer)"},
+      {label:"Subtask 2","text":"Plot distributions: passage length (word count), question length, answer label balance (A/B/C/D), question type frequency"},
+      {label:"Subtask 3","text":"Generate summary statistics table (mean/median/max lengths, class balance percentages) and save to EDA.ipynb"},
+      {label:"Subtask 4","text":"Identify and document potential dataset biases (cultural/linguistic bias from Chinese school exams) in the notebook"},
+    ]
+  },
+  {
+    phase:"Phase 1 — Data & Exploration",
+    id:"T3",title:"Preprocessing pipeline (preprocessing.py)",tag:"EDA · included",color:"#EAF3DE",tc:"#27500A",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Implement text cleaning: lowercasing, punctuation removal, whitespace normalization — applies to article, question, and all options"},
+      {label:"Subtask 2","text":"Build One-Hot Encoded vocabulary over training corpus and transform (article + question + option) concatenations into feature vectors"},
+      {label:"Subtask 3","text":"Compute and save cosine similarity matrix between articles and answer options (used by both models)"},
+      {label:"Subtask 4","text":"Produce train/dev/test feature matrices and save to data/processed/ so they can be reloaded without recomputing"},
+    ]
+  },
+  {
+    phase:"Phase 2 — Model A",
+    id:"T4",title:"Model A — traditional ML classifiers (answer verifier)",tag:"Model A · 15 marks",color:"#E6F1FB",tc:"#0C447C",marks:"15/100",
+    subs:[
+      {label:"Subtask 1","text":"Train Logistic Regression on One-Hot Encoded (article + question + option) features for answer verification; report Accuracy, Macro F1, and Exact Match on dev set"},
+      {label:"Subtask 2","text":"Train SVM (LinearSVC) using One-Hot Encoding + cosine similarity features for answer verification; compare with LR using a metric comparison table"},
+      {label:"Subtask 3","text":"Train Naive Bayes on bag-of-words of question tokens for question type classification; report Accuracy and F1"},
+      {label:"Subtask 4","text":"Train Random Forest on handcrafted lexical features (passage length, question length, option length, keyword overlap) for difficulty estimation; report Accuracy"},
+      {label:"Subtask 5","text":"Pickle all trained sklearn models to models/model_a/traditional/ using joblib"},
+    ]
+  },
+  {
+    phase:"Phase 2 — Model A",
+    id:"T5",title:"Model A — unsupervised / semi-supervised",tag:"Model A · 20 marks",color:"#E6F1FB",tc:"#0C447C",marks:"20/100",
+    subs:[
+      {label:"Subtask 1","text":"Implement K-Means Clustering on One-Hot Encoded question-answer pairs; evaluate with clustering purity and silhouette score"},
+      {label:"Subtask 2","text":"Implement Label Propagation (semi-supervised) using a small labeled set to propagate answer labels to nearby unlabeled samples; report semi-supervised F1"},
+      {label:"Subtask 3","text":"Produce a comparison table: K-Means purity/silhouette vs. Label Propagation F1 vs. supervised LR/SVM accuracy"},
+      {label:"Subtask 4","text":"(Optional bonus) Implement Gaussian Mixture Models (GMM) and evaluate cluster quality vs. K-Means"},
+    ]
+  },
+  {
+    phase:"Phase 2 — Model A",
+    id:"T6",title:"Model A — template-based question generator",tag:"Model A · included in 15",color:"#E6F1FB",tc:"#0C447C",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Extract candidate sentences from passage using One-Hot Encoded keyword overlap with the correct answer"},
+      {label:"Subtask 2","text":"Apply Wh-word templates (Who/What/Where/When/Why) to transform top candidate sentences into question strings"},
+      {label:"Subtask 3","text":"Train SVM or Random Forest to rank generated questions by fluency and relevance features (sentence length, keyword density, position in passage)"},
+    ]
+  },
+  {
+    phase:"Phase 2 — Model A",
+    id:"T7",title:"Model A — ensemble strategy",tag:"Model A · 5 marks",color:"#E6F1FB",tc:"#0C447C",marks:"5/100",
+    subs:[
+      {label:"Subtask 1","text":"Implement soft-voting ensemble: average probability outputs from LR + SVM + Naive Bayes; compare ensemble accuracy/F1 vs. individual models on test set"},
+      {label:"Subtask 2","text":"(Optional) Implement stacking: train a meta-classifier (LR) on the output probabilities of base models"},
+      {label:"Subtask 3","text":"Run final Model A evaluation on RACE test set; record Accuracy, Macro F1, Exact Match and save results"},
+    ]
+  },
+  {
+    phase:"Phase 3 — Model B",
+    id:"T8",title:"Model B — distractor generator",tag:"Model B · 15 marks",color:"#EEEDFE",tc:"#3C3489",marks:"15/100",
+    subs:[
+      {label:"Subtask 1","text":"Candidate extraction: retrieve candidate phrases from the passage using simple string matching and frequency-based word selection (no external NLP tools)"},
+      {label:"Subtask 2","text":"Feature engineering per candidate: One-Hot Encoding cosine similarity to correct answer, character-level match score, passage frequency"},
+      {label:"Subtask 3","text":"Train Logistic Regression or Random Forest ML ranker to score candidates; select top-3 non-answer candidates as distractors"},
+      {label:"Subtask 4","text":"Apply a diversity penalty to ensure the 3 distractors are not trivially similar to each other"},
+      {label:"Subtask 5","text":"Evaluate distractor quality: Precision, Recall, F1 (how many gold distractors are recovered), Accuracy (top-ranked is not the correct answer), and Confusion Matrix"},
+    ]
+  },
+  {
+    phase:"Phase 3 — Model B",
+    id:"T9",title:"Model B — hint generator",tag:"Model B · 10 marks",color:"#EEEDFE",tc:"#3C3489",marks:"10/100",
+    subs:[
+      {label:"Subtask 1","text":"Extractive strategy: score each article sentence by cosine similarity to the question; surface top-3 sentences as ranked hints (Hint 1 = most general, Hint 3 = near-explicit)"},
+      {label:"Subtask 2","text":"ML-scored strategy: train a Logistic Regression on sentence features (keyword overlap, position in passage, sentence length) to rank sentences as hints"},
+      {label:"Subtask 3","text":"Evaluate hint quality: Precision of top-K ranked sentences overlapping with the gold key sentence; R² for regression-based scorer"},
+      {label:"Subtask 4","text":"Pickle all Model B artifacts to models/model_b/traditional/ using joblib"},
+    ]
+  },
+  {
+    phase:"Phase 4 — User Interface",
+    id:"T10",title:"Screen 1 — Article Input view",tag:"UI · 15 marks",color:"#FAEEDA",tc:"#633806",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Build a text area where the user can paste a reading passage, plus a 'Load random RACE sample' button for quick testing"},
+      {label:"Subtask 2","text":"Add a 'Submit' button that triggers Model A and Model B inference in sequence with a loading spinner shown during inference"},
+      {label:"Subtask 3","text":"Validate input: show a friendly error message if the text area is empty"},
+    ]
+  },
+  {
+    phase:"Phase 4 — User Interface",
+    id:"T11",title:"Screen 2 — Quiz view (Q&A)",tag:"UI · 15 marks",color:"#FAEEDA",tc:"#633806",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Display the generated (or RACE original) question and four options (A, B, C, D) — one correct answer from Model A, three distractors from Model B"},
+      {label:"Subtask 2","text":"Add a 'Check' button that calls Model A verifier; show color-coded result (green = correct, red = incorrect) with explanation text"},
+    ]
+  },
+  {
+    phase:"Phase 4 — User Interface",
+    id:"T12",title:"Screen 3 — Hint panel",tag:"UI · 15 marks",color:"#FAEEDA",tc:"#633806",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Build a collapsible or tabbed panel showing graduated hints from Model B (Hint 1 most general → Hint 3 near-explicit)"},
+      {label:"Subtask 2","text":"Show a 'Reveal Answer' button only after the user has viewed all three hints"},
+    ]
+  },
+  {
+    phase:"Phase 4 — User Interface",
+    id:"T13",title:"Screen 4 — Analytics dashboard",tag:"UI · 15 marks",color:"#FAEEDA",tc:"#633806",marks:"15/100",
+    subs:[
+      {label:"Subtask 1","text":"Display Model A live metrics: Accuracy, F1-Score, Precision, Recall, Confusion Matrix across the last N inferences"},
+      {label:"Subtask 2","text":"Display Model B live metrics: Precision, Recall, F1-Score, Accuracy for distractor ranking"},
+      {label:"Subtask 3","text":"Show inference latency per request; add a table + CSV export button to log session results"},
+    ]
+  },
+  {
+    phase:"Phase 5 — Evaluation & Submission",
+    id:"T14",title:"Full evaluation & hyperparameter tuning",tag:"Evaluation",color:"#FAECE7",tc:"#712B13",marks:"",
+    subs:[
+      {label:"Subtask 1","text":"Run final Model A evaluation on RACE test set: Accuracy, Macro F1, Exact Match — record in experiments.ipynb"},
+      {label:"Subtask 2","text":"Run final Model B evaluation on RACE test set: Precision, Recall, F1, R² — record in experiments.ipynb"},
+      {label:"Subtask 3","text":"Perform hyperparameter sweep (e.g., C for SVM/LR, n_estimators for RF) and document best configs"},
+      {label:"Subtask 4","text":"Complete human evaluation forms (Likert 1–5 for distractor believability) as required by the rubric"},
+    ]
+  },
+  {
+    phase:"Phase 5 — Evaluation & Submission",
+    id:"T15",title:"Final report (PDF)",tag:"Report · 5 marks",color:"#F1EFE8",tc:"#444441",marks:"5/100",
+    subs:[
+      {label:"Subtask 1","text":"Write sections: Abstract (≤200 words), Introduction & Motivation, Related Work (cite ≥5 papers from the suggested references list)"},
+      {label:"Subtask 2","text":"Write sections: Dataset Analysis, Model A design/training/results, Model B design/training/results, User Interface Description"},
+      {label:"Subtask 3","text":"Write sections: Evaluation & Discussion, Limitations & Future Work, Conclusion, References; address the 3 ethical considerations (bias, accessibility, academic integrity)"},
+    ]
+  },
+  {
+    phase:"Phase 5 — Evaluation & Submission",
+    id:"T16",title:"Code quality & final submission",tag:"Code · 5 marks",color:"#F1EFE8",tc:"#444441",marks:"5/100",
+    subs:[
+      {label:"Subtask 1","text":"Add docstrings and inline comments to all src/ files (preprocessing.py, model_a_train.py, model_b_train.py, inference.py, evaluate.py)"},
+      {label:"Subtask 2","text":"Write unit tests in tests/test_inference.py covering at least: data loading, feature extraction, model A prediction, model B distractor output"},
+      {label:"Subtask 3","text":"Verify the full pipeline runs from one command / notebook; ensure meaningful git commit history; share repo with instructor; record 10-min demo video or prepare live presentation"},
+    ]
+  },
+];
+
+let phaseRendered={};
+const container=document.getElementById('tasks');
+
+tasks.forEach((t,i)=>{
+  if(!phaseRendered[t.phase]){
+    const pl=document.createElement('div');
+    pl.className='phase-label';
+    pl.textContent=t.phase;
+    container.appendChild(pl);
+    phaseRendered[t.phase]=true;
+  }
+  const block=document.createElement('div');
+  block.className='task-block';
+
+  const hdr=document.createElement('div');
+  hdr.className='task-header';
+  hdr.innerHTML=`
+    <span class="task-num" style="background:${t.color};color:${t.tc}">${t.id}</span>
+    <span class="task-title">${t.title}</span>
+    <span class="tag" style="background:${t.color};color:${t.tc}">${t.tag}</span>
+    ${t.marks?`<span class="marks">${t.marks}</span>`:''}
+    <span class="chevron">▶</span>
+  `;
+
+  const subs=document.createElement('div');
+  subs.className='subtasks';
+  t.subs.forEach(s=>{
+    const d=document.createElement('div');
+    d.className='sub';
+    d.innerHTML=`<span class="sub-label">${s.label}</span><span>${s.text}</span>`;
+    subs.appendChild(d);
+  });
+
+  hdr.addEventListener('click',()=>{
+    const ch=hdr.querySelector('.chevron');
+    const open=subs.classList.toggle('open');
+    ch.classList.toggle('open',open);
+  });
+
+  block.appendChild(hdr);
+  block.appendChild(subs);
+  container.appendChild(block);
+});
+</script>
