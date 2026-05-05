@@ -1,2 +1,52 @@
-/data
+# Data files
+data/raw/*.csv
+data/processed/*.csv
+*.csv
+
+# Virtual environments
 /venv_ydata
+venv/
+ENV/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models
+models/**/*.pkl
+models/**/*.h5
+models/**/*.pt
+models/**/*.joblib
+
+# Logs
+*.log
