@@ -7,6 +7,7 @@ from sklearn.preprocessing import normalize
 from pathlib import Path
 from tqdm import tqdm
 import time
+from sklearn.model_selection import train_test_split
 
 # ============================================================================
 # SUBTASK 1: Text Cleaning Function
@@ -30,9 +31,8 @@ def compute_cosine_sim_features(df, vectorizer, desc="Computing cosine similarit
     print(f"\n{desc}...")
     
     # Transform article vectors once and normalize
-    with tqdm(total=1, desc="  Transforming article vectors", leave=False) as pbar:
+    with tqdm(total=1, desc="  Transforming article vectors", leave=False):
         article_norm = normalize(vectorizer.transform(df["article"]), norm='l2')
-        pbar.update(1)
     
     option_cols = ["A", "B", "C", "D"]
     similarities = {}
@@ -107,59 +107,78 @@ def compute_lexical_features(df, desc="Computing lexical features"):
 
 
 # ============================================================================
-# MAIN PREPROCESSING PIPELINE
+# MAIN PREPROCESSING PIPELINE (WITH SPLITTING)
 # ============================================================================
 def main():
     start_time = time.time()
     
     print("="*70)
-    print("TEXT PREPROCESSING PIPELINE WITH OPTIMIZED FEATURES")
+    print("TEXT PREPROCESSING PIPELINE (TRAIN/DEV/TEST SPLIT + FEATURES)")
     print("="*70)
     
     # ========================================================================
-    # Load and Clean Data
+    # 1. Load ONLY the original train.csv (dev/test are duplicates, we discard them)
     # ========================================================================
-    print("\n[1/6] Loading and cleaning data...")
-    data_files = {
-        "train": "../data/raw/train.csv",
-        "dev": "../data/raw/dev.csv",
-        "test": "../data/raw/test.csv"
+    print("\n[1/7] Loading and splitting original training data...")
+    raw_train_path = Path("../data/raw/train.csv")
+    if not raw_train_path.exists():
+        raise FileNotFoundError(f"Original train.csv not found at {raw_train_path}")
+    
+    full_df = pd.read_csv(raw_train_path)
+    # Drop any identifier columns if present
+    for col in ["id", "Unnamed: 0"]:
+        if col in full_df.columns:
+            full_df.drop(columns=[col], inplace=True)
+    full_df.dropna(inplace=True)
+    
+    print(f"  Loaded {len(full_df)} total examples from train.csv")
+    
+    # Split into train (70%), dev (15%), test (15%)
+    train_df, temp_df = train_test_split(
+        full_df, train_size=0.7, random_state=42, shuffle=True
+    )
+    dev_df, test_df = train_test_split(
+        temp_df, test_size=0.5, random_state=42, shuffle=True  # 0.5*0.3 = 0.15
+    )
+    
+    datasets = {
+        "train": train_df.reset_index(drop=True),
+        "dev": dev_df.reset_index(drop=True),
+        "test": test_df.reset_index(drop=True)
     }
     
-    datasets = {}
-    text_columns = ["article", "question", "A", "B", "C", "D"]
+    print(f"  ✓ Split sizes:")
+    print(f"    Train: {len(train_df)}")
+    print(f"    Dev:   {len(dev_df)}")
+    print(f"    Test:  {len(test_df)}")
     
-    for split, file_path in data_files.items():
-        print(f"  Processing {split}...")
-        df = pd.read_csv(file_path)
-        
-        # Remove unnecessary columns
-        df.drop(columns=[col for col in ["id", "Unnamed: 0"] if col in df.columns], inplace=True)
-        df.dropna(inplace=True)
-        
-        # Apply clean() function to all text fields
+    # ========================================================================
+    # 2. Clean text columns for all splits
+    # ========================================================================
+    print("\n[2/7] Cleaning text data (lowercase, remove punctuation)...")
+    text_columns = ["article", "question", "A", "B", "C", "D"]
+    for split, df in datasets.items():
+        print(f"  Cleaning {split}...")
         for col in text_columns:
             if col in df.columns:
                 df[col] = df[col].apply(clean)
-        
-        datasets[split] = df
-        print(f"    ✓ Loaded and cleaned {split} split: {len(df)} rows")
+        print(f"    ✓ {split} cleaned")
     
     # ========================================================================
-    # Build One-Hot Encoded Vocabulary
+    # 3. Build One-Hot Encoded Vocabulary (on cleaned train set only)
     # ========================================================================
-    print("\n[2/6] Building one-hot vocabulary...")
-    train_df = datasets["train"]
+    print("\n[3/7] Building one-hot vocabulary on training set...")
+    train_cleaned = datasets["train"]
     
     # Concatenate (article + question + options) for vocabulary building
     print("  Preparing concatenated text...")
     concatenated_train = (
-        train_df["article"] + " " + 
-        train_df["question"] + " " + 
-        train_df["A"] + " " + 
-        train_df["B"] + " " + 
-        train_df["C"] + " " + 
-        train_df["D"]
+        train_cleaned["article"] + " " + 
+        train_cleaned["question"] + " " + 
+        train_cleaned["A"] + " " + 
+        train_cleaned["B"] + " " + 
+        train_cleaned["C"] + " " + 
+        train_cleaned["D"]
     )
     
     # Fit CountVectorizer on training corpus only
@@ -174,30 +193,20 @@ def main():
     X_train_ohe = vectorizer.transform(concatenated_train)
     print(f"    ✓ Train shape: {X_train_ohe.shape}")
     
-    X_dev_ohe = vectorizer.transform(
-        datasets["dev"]["article"] + " " + 
-        datasets["dev"]["question"] + " " + 
-        datasets["dev"]["A"] + " " + 
-        datasets["dev"]["B"] + " " + 
-        datasets["dev"]["C"] + " " + 
-        datasets["dev"]["D"]
-    )
-    print(f"    ✓ Dev shape: {X_dev_ohe.shape}")
+    # Helper to concatenate a split
+    def concat_split(df):
+        return (df["article"] + " " + df["question"] + " " +
+                df["A"] + " " + df["B"] + " " + df["C"] + " " + df["D"])
     
-    X_test_ohe = vectorizer.transform(
-        datasets["test"]["article"] + " " + 
-        datasets["test"]["question"] + " " + 
-        datasets["test"]["A"] + " " + 
-        datasets["test"]["B"] + " " + 
-        datasets["test"]["C"] + " " + 
-        datasets["test"]["D"]
-    )
+    X_dev_ohe = vectorizer.transform(concat_split(datasets["dev"]))
+    X_test_ohe = vectorizer.transform(concat_split(datasets["test"]))
+    print(f"    ✓ Dev shape: {X_dev_ohe.shape}")
     print(f"    ✓ Test shape: {X_test_ohe.shape}")
     
     # ========================================================================
-    # Compute Cosine Similarity Features (OPTIMIZED)
+    # 4. Compute Cosine Similarity Features (OPTIMIZED)
     # ========================================================================
-    print("\n[3/6] Computing cosine similarity features...")
+    print("\n[4/7] Computing cosine similarity features...")
     
     sim_features_train = compute_cosine_sim_features(datasets["train"], vectorizer, "Training set")
     sim_features_dev = compute_cosine_sim_features(datasets["dev"], vectorizer, "Dev set")
@@ -206,9 +215,9 @@ def main():
     print(f"  ✓ Similarity features shape: {sim_features_train.shape}")
     
     # ========================================================================
-    # Compute Lexical Features (OPTIMIZED)
+    # 5. Compute Lexical Features (OPTIMIZED)
     # ========================================================================
-    print("\n[4/6] Computing lexical features...")
+    print("\n[5/7] Computing lexical features...")
     
     lex_features_train = compute_lexical_features(datasets["train"], "Training set")
     lex_features_dev = compute_lexical_features(datasets["dev"], "Dev set")
@@ -217,9 +226,9 @@ def main():
     print(f"  ✓ Lexical features: {lex_features_train.shape[1]} features")
     
     # ========================================================================
-    # Save Processed Feature Matrices
+    # 6. Save Processed Feature Matrices
     # ========================================================================
-    print("\n[5/6] Saving feature matrices...")
+    print("\n[6/7] Saving feature matrices...")
     
     output_dir = Path("../data/processed")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -249,40 +258,26 @@ def main():
     lex_features_test.to_csv(output_dir / "lex_features_test.csv", index=False)
     print("    ✓ Saved lexical features (.csv)")
     
-    # Save cleaned datasets
+    # Save cleaned datasets (the split datasets after cleaning)
     print("  Saving cleaned datasets...")
     for split, df in datasets.items():
         df.to_csv(output_dir / f"{split}_preprocessed.csv", index=False)
     print("    ✓ Saved cleaned datasets (.csv)")
     
     # ========================================================================
-    # Optional: TF-IDF Vectorization
+    # 7. Optional: TF-IDF Vectorization
     # ========================================================================
-    print("\n[6/6] Computing optional TF-IDF features...")
+    print("\n[7/7] Computing optional TF-IDF features...")
     
-    print("  Fitting TF-IDF...")
+    print("  Fitting TF-IDF (on training concatenated text)...")
     tfidf_vectorizer = TfidfVectorizer(max_features=20000)
     tfidf_vectorizer.fit(concatenated_train)
     print(f"    ✓ TF-IDF vocabulary size: {len(tfidf_vectorizer.get_feature_names_out())}")
     
     print("  Transforming splits...")
     X_train_tfidf = tfidf_vectorizer.transform(concatenated_train)
-    X_dev_tfidf = tfidf_vectorizer.transform(
-        datasets["dev"]["article"] + " " + 
-        datasets["dev"]["question"] + " " + 
-        datasets["dev"]["A"] + " " + 
-        datasets["dev"]["B"] + " " + 
-        datasets["dev"]["C"] + " " + 
-        datasets["dev"]["D"]
-    )
-    X_test_tfidf = tfidf_vectorizer.transform(
-        datasets["test"]["article"] + " " + 
-        datasets["test"]["question"] + " " + 
-        datasets["test"]["A"] + " " + 
-        datasets["test"]["B"] + " " + 
-        datasets["test"]["C"] + " " + 
-        datasets["test"]["D"]
-    )
+    X_dev_tfidf = tfidf_vectorizer.transform(concat_split(datasets["dev"]))
+    X_test_tfidf = tfidf_vectorizer.transform(concat_split(datasets["test"]))
     
     print("  Saving TF-IDF matrices...")
     joblib.dump(X_train_tfidf, output_dir / "X_train_tfidf.pkl")
