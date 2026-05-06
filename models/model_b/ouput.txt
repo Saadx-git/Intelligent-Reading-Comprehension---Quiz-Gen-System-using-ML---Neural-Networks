@@ -1,0 +1,164 @@
+﻿================================================================================
+MODEL B FULL PIPELINE - LOADING PREPROCESSED DATA
+================================================================================
+
+Loading preprocessed data...
+
+Data loaded:
+  Train:  61,496 examples
+  Dev:    13,178 examples
+  Test:   13,178 examples
+  Total:  87,852 examples
+
+✓ Running on FULL DATASET
+  (Pass sample size as argument to test: python3 model_b.py 1000)
+
+Initializing Model B...
+Starting pipeline...
+
+
+================================================================================
+MODEL B: HINT GENERATION + DISTRACTOR GENERATION SYSTEM
+================================================================================
+Loaded TF‑IDF vectorizer from data/processed/tfidf_vectorizer.pkl
+
+Corpus size: 87852 articles
+
+------------------------------------------------------------
+HINT SUBTASK 1: EXTRACTIVE STRATEGY (Cosine Similarity)
+------------------------------------------------------------
+Generating extractive hints on all sets...
+  Extractive dev: 100%|████████████████████████████████████████████████████████| 13178/13178 [00:20<00:00, 638.19it/s]
+  Extractive test: 100%|███████████████████████████████████████████████████████| 13178/13178 [00:20<00:00, 642.72it/s]
+
+------------------------------------------------------------
+HINT SUBTASK 2: ML-SCORED STRATEGY (Logistic Regression)
+------------------------------------------------------------
+Preparing hint training data...
+Preparing: 100%|██████████████████████████████████████████████████████████████| 61496/61496 [00:15<00:00, 3997.70it/s]
+ML hint generator ready (no TF-IDF vectorization)
+Training ML hint ranker on 61496 examples...
+Extracting features: 100%|████████████████████████████████████████████████████| 61496/61496 [00:30<00:00, 2013.54it/s]
+  Total rows: 61496, positive: 59943
+Generating ML-scored hints on all sets...
+  ML dev: 100%|███████████████████████████████████████████████████████████████| 13178/13178 [00:10<00:00, 1251.30it/s]
+  ML test: 100%|██████████████████████████████████████████████████████████████| 13178/13178 [00:10<00:00, 1236.63it/s]
+
+------------------------------------------------------------
+HINT SUBTASK 3: EVALUATION METRICS
+------------------------------------------------------------
+Preparing hint training data...
+Preparing: 100%|██████████████████████████████████████████████████████████████| 13178/13178 [00:03<00:00, 4238.06it/s]
+Preparing hint training data...
+Preparing: 100%|██████████████████████████████████████████████████████████████| 13178/13178 [00:03<00:00, 4243.42it/s]
+
+DEV SET - Extractive Strategy:
+  precision_at_k                 0.9746
+  recall_at_k                    0.9746
+  f1_at_k                        0.9746
+  accuracy_top1                  0.9746
+  r2_score                       -24.2903
+  confusion_matrix               [[0, 335], [0, 12843]]
+  n_examples                     13178
+
+DEV SET - ML-Scored Strategy:
+  precision_at_k                 0.9746
+  recall_at_k                    0.9746
+  f1_at_k                        0.9746
+  accuracy_top1                  0.9746
+  r2_score                       0.9999
+  confusion_matrix               [[0, 335], [0, 12843]]
+  n_examples                     13178
+
+TEST SET - Extractive Strategy:
+  precision_at_k                 0.9752
+  recall_at_k                    0.9752
+  f1_at_k                        0.9752
+  accuracy_top1                  0.9752
+  r2_score                       -25.0554
+  confusion_matrix               [[0, 327], [0, 12851]]
+  n_examples                     13178
+
+TEST SET - ML-Scored Strategy:
+  precision_at_k                 0.9752
+  recall_at_k                    0.9752
+  f1_at_k                        0.9752
+  accuracy_top1                  0.9752
+  r2_score                       0.9999
+  confusion_matrix               [[0, 327], [0, 12851]]
+  n_examples                     13178
+
+------------------------------------------------------------
+DISTRACTOR SUBTASK A1–A3: CANDIDATE EXTRACTION + ML RANKER
+------------------------------------------------------------
+Training distractor ranker (RF) on 61496 examples...
+Building training set: 100%|████████████████████████████████████████████████████| 61496/61496 [52:36<00:00, 19.48it/s]
+  Training on 3967697 candidate rows (pos=693, neg=3967004)
+
+DISTRACTOR SUBTASK A4: DIVERSITY PENALTY (MMR applied)
+Generating distractors on all sets...
+  Distractors dev: 100%|████████████████████████████████████████████████████████| 13178/13178 [17:40<00:00, 12.43it/s]
+  Distractors test: 100%|███████████████████████████████████████████████████████| 13178/13178 [21:28<00:00, 10.23it/s]
+
+DISTRACTOR SUBTASK A5: DISTRACTOR QUALITY EVALUATION
+
+DEV SET - Distractor Metrics:
+  precision                      0.0003
+  recall                         0.0003
+  f1                             0.0003
+  accuracy_top1                  0.0005
+  confusion_matrix               [[0, 39521], [0, 13]]
+  n_examples                     13178
+
+TEST SET - Distractor Metrics:
+  precision                      0.0004
+  recall                         0.0004
+  f1                             0.0004
+  accuracy_top1                  0.0007
+  confusion_matrix               [[0, 39509], [0, 16]]
+  n_examples                     13175
+
+------------------------------------------------------------
+SAVING ALL ARTIFACTS (Subtask 4)
+------------------------------------------------------------
+Saving 10 artifacts to models/model_b/traditional/...
+  ✓ extractive_generator.pkl                 (   724.9 KB)
+  ✓ ml_generator.pkl                         (     0.9 KB)
+  ✓ distractor_generator.pkl                 ( 30295.7 KB)
+  ✓ extractive_dev_results.pkl               ( 16941.9 KB)
+  ✓ ml_dev_results.pkl                       ( 16941.9 KB)
+  ✓ distractor_dev_results.pkl               (  1360.3 KB)
+  ✓ extractive_test_results.pkl              ( 16872.8 KB)
+  ✓ ml_test_results.pkl                      ( 16872.8 KB)
+  ✓ distractor_test_results.pkl              (  1360.8 KB)
+  ✓ evaluation_metrics.pkl                   (     0.8 KB)
+  ✓ evaluation_metrics.csv                   (6 rows)
+
+================================================================================
+MODEL B PIPELINE COMPLETE
+================================================================================
+✓ All artifacts saved to: models/model_b/traditional
+✓ Processed:
+  - Train: 61496 examples
+  - Dev:   13178 examples
+  - Test:  13178 examples
+
+================================================================================
+✓ MODEL B PIPELINE COMPLETE!
+================================================================================
+
+✓ Results saved to: models/model_b/traditional
+
+Key files generated:
+  - extractive_generator.pkl
+  - ml_generator.pkl
+  - distractor_generator.pkl
+  - extractive_dev_results.pkl
+  - ml_dev_results.pkl
+  - distractor_dev_results.pkl
+  - extractive_test_results.pkl
+  - ml_test_results.pkl
+  - distractor_test_results.pkl
+  - evaluation_metrics.pkl
+  - evaluation_metrics.csv
+================================================================================
