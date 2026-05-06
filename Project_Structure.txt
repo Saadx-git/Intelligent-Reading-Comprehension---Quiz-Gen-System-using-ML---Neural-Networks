@@ -20,10 +20,7 @@
             ├── X_train_ohe.pkl
             ├── X_train_tfidf.pkl
         └── 📁raw
-            ├── dev.csv
-            ├── test.csv
             ├── train.csv
-        ├── race-dataset.zip
     └── 📁models
         └── 📁model_a
         └── 📁model_b
@@ -45,6 +42,7 @@
             ├── loader.py
             ├── MODEL_B_REPORT.md
             ├── model_b.py
+            ├── ouput.txt
             ├── README.md
             ├── STRUCTURE.txt
         ├── model_b.zip
@@ -58,6 +56,7 @@
     └── 📁tests
     └── 📁ui
     ├── .gitignore
+    ├── Project_Structure.txt
     ├── README.md
     ├── Requirements.txt
     └── ToDo_List.html
