@@ -1,0 +1,68 @@
+{
+  "logistic_regression": {
+    "accuracy": 0.247,
+    "macro_f1": 0.24544516293922636,
+    "exact_match": 0.247,
+    "train_sec": 26.6
+  },
+  "svm": {
+    "accuracy": 0.272,
+    "macro_f1": 0.17704671019588145,
+    "exact_match": 0.272,
+    "train_sec": 40.76
+  },
+  "naive_bayes": {
+    "accuracy": 0.554,
+    "macro_f1": 0.23554776297580463
+  },
+  "random_forest": {
+    "accuracy": 0.293,
+    "macro_f1": 0.2871630723821845
+  },
+  "kmeans": {
+    "purity": 0.274,
+    "silhouette": -0.0439
+  },
+  "label_propagation": {
+    "semi_supervised_f1": 0.09
+  },
+  "gmm_bonus": {
+    "purity": 0.2726
+  },
+  "ensemble_dev": {
+    "accuracy": 0.239,
+    "macro_f1": 0.23694703676303294,
+    "exact_match": 0.239
+  },
+  "test_final": {
+    "accuracy": 0.234,
+    "macro_f1": 0.2329,
+    "exact_match": 0.234,
+    "confusion_matrix": [
+      [
+        43,
+        63,
+        56,
+        56
+      ],
+      [
+        33,
+        62,
+        82,
+        85
+      ],
+      [
+        44,
+        81,
+        68,
+        78
+      ],
+      [
+        61,
+        74,
+        53,
+        61
+      ]
+    ]
+  }
+}

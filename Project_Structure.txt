@@ -23,8 +23,41 @@
             ├── train.csv
     └── 📁models
         └── 📁model_a
+            └── 📁traditional
+                ├── ensemble_meta.pkl
+                ├── evaluation_results.json
+                ├── gmm_model.pkl
+                ├── kmeans_model.pkl
+                ├── lp_model.pkl
+                ├── lr_model.pkl
+                ├── nb_model.pkl
+                ├── qg_ranker_feat_cols.pkl
+                ├── qg_ranker_model.pkl
+                ├── qtype_label_encoder.pkl
+                ├── rf_feature_cols.pkl
+                ├── rf_model.pkl
+                ├── svm_model.pkl
+            ├── model_a.py
+            ├── output.txt
         └── 📁model_b
+            └── 📁__pycache__
+                ├── model_b.cpython-311.pyc
+                ├── model_b.cpython-314.pyc
+            └── 📁traditional
+                ├── distractor_dev_results.pkl
+                ├── distractor_generator.pkl
+                ├── distractor_test_results.pkl
+                ├── evaluation_metrics.csv
+                ├── evaluation_metrics.pkl
+                ├── extractive_dev_results.pkl
+                ├── extractive_generator.pkl
+                ├── extractive_test_results.pkl
+                ├── ml_dev_results.pkl
+                ├── ml_generator.pkl
+                ├── ml_test_results.pkl
             ├── COMPLETION_SUMMARY.md
+            ├── distractor_ranker.pkl
+            ├── hint_scorer.pkl
             ├── loader.py
             ├── MODEL_B_REPORT.md
             ├── model_b.py

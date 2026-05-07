@@ -1117,6 +1117,13 @@ class ModelB:
         self._ready = True
         log.info("ModelB ready.")
 
+    def generate(self, article, question, correct):
+        out = self.predict(article, question, correct, n_distractors=3, n_hints=3)
+        options = {"A": correct}
+        for i, d in enumerate(out["distractors"]):
+            options[chr(66+i)] = d   # B, C, D
+        return {"options": options, "hints": out["hints"]}
+
     def predict(
         self, article: str, question: str, answer: str,
         n_distractors: int = 3, n_hints: int = 3
@@ -1139,6 +1146,8 @@ class ModelB:
         """Re-train and reload."""
         self.dist_model, self.hint_model, self.ohe_vec, self.tfidf_vec = run_train()
         self._ready = True
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,56 @@
+﻿saad@fedora:~/Everything/University/Semester_6/AI/Project/models/model_a$ python model_a.py --train_rows 8000 --dev_rows 1000 --test_rows 1000
+
+[1/7] Loading features …
+
+Subsampling: train=8000, dev=1000, test=1000
+  New sizes: train=8000, dev=1000, test=1000
+
+[2/7] Logistic Regression …
+  LR  | Acc=0.2470  F1=0.2454  EM=0.2470
+
+[3/7] SVM (OHE + cosine sim) …
+  SVM | Acc=0.2720  F1=0.1770  EM=0.2720
+
+[4/7] Naive Bayes (question-type classification) …
+  NB  | Acc=0.5540  F1=0.2355
+
+[5/7] Random Forest (lexical features – per‑option) …
+  RF  | Acc=0.2930  F1=0.2872
+
+[6a/7] K-Means …
+  K-Means | Purity=0.2740  Silhouette=-0.0439
+
+[6b/7] Label Propagation …
+  LP  | Semi-sup F1=0.0900
+
+[6c/7] GMM (bonus) …
+  GMM | Purity=0.2726
+
+── Comparison Table ────────────────────────────────────────
+Model                      Accuracy/Purity  F1/Silhouette
+----------------------------------------------------------
+  LR (supervised)                   0.2470         0.2454
+  SVM (supervised)                  0.2720         0.1770
+  K-Means purity                    0.2740        -0.0439
+  Label Prop F1                     0.0900              —
+
+[QG] Training QG ranker …
+
+[7/7] Soft-Vote Ensemble (LR + SVM) …
+  Ensemble | Acc=0.2390  F1=0.2369  EM=0.2390
+
+[Final] Test-set evaluation …
+              precision    recall  f1-score   support
+
+           0       0.24      0.20      0.22       218
+           1       0.22      0.24      0.23       262
+           2       0.26      0.25      0.26       271
+           3       0.22      0.24      0.23       249
+
+    accuracy                           0.23      1000
+   macro avg       0.23      0.23      0.23      1000
+weighted avg       0.24      0.23      0.23      1000
+
+
+✔  Models → /home/saad/Everything/University/Semester_6/AI/Project/models/model_a/traditional
+✔  Results → /home/saad/Everything/University/Semester_6/AI/Project/models/model_a/traditional/evaluation_results.json
