@@ -388,6 +388,145 @@ def generate_questions(article: str, answer: str,
     return ranked[:top_k]
 
 
+# ── QG EVALUATION (BLEU / ROUGE / METEOR) ─────────────────────────────────────
+def evaluate_question_generation(dev_df, qg_ranker=None, qg_feat_cols=None,
+                                  max_samples=500):
+    """
+    Evaluate the quality of generated questions against the RACE reference
+    questions using NLG metrics: BLEU, ROUGE-1, ROUGE-2, ROUGE-L, and METEOR.
+
+    For each dev sample:
+      1. Take the article and the correct answer text.
+      2. Generate a question using template-based QG.
+      3. Compare against the reference question from the dataset.
+      4. Compute BLEU, ROUGE, and METEOR scores.
+    """
+    print("\n[QG-Eval] Evaluating Question Generation (BLEU / ROUGE / METEOR) …")
+
+    # ── Import NLG metric libraries ──────────────────────────────────────────
+    try:
+        from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+        from nltk.translate.meteor_score import meteor_score as nltk_meteor
+        import nltk
+        # Ensure required NLTK data is available
+        try:
+            nltk.data.find('corpora/wordnet')
+        except LookupError:
+            nltk.download('wordnet', quiet=True)
+        try:
+            nltk.data.find('tokenizers/punkt_tab')
+        except LookupError:
+            nltk.download('punkt_tab', quiet=True)
+    except ImportError:
+        print("  ⚠  nltk not installed — skipping QG evaluation.")
+        return None
+
+    try:
+        from rouge_score import rouge_scorer
+    except ImportError:
+        print("  ⚠  rouge-score not installed (pip install rouge-score) — skipping ROUGE.")
+        rouge_scorer = None
+
+    # ── Prepare the ROUGE scorer ─────────────────────────────────────────────
+    if rouge_scorer:
+        r_scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'],
+                                             use_stemmer=True)
+
+    smooth = SmoothingFunction().method1
+
+    # ── Map answer letter → answer text ──────────────────────────────────────
+    label_map = {"A": "A", "B": "B", "C": "C", "D": "D",
+                 "a": "A", "b": "B", "c": "C", "d": "D"}
+
+    # ── Sample dev set ───────────────────────────────────────────────────────
+    eval_df = dev_df.head(min(max_samples, len(dev_df)))
+
+    bleu_scores  = []
+    rouge1_scores, rouge2_scores, rougeL_scores = [], [], []
+    meteor_scores = []
+    evaluated = 0
+
+    for _, row in eval_df.iterrows():
+        try:
+            article    = str(row.get("article", ""))
+            ref_question = str(row.get("question", ""))
+            ans_key    = label_map.get(str(row.get("answer", "")).strip(), None)
+            if not ans_key or ans_key not in row:
+                continue
+            answer_text = str(row[ans_key])
+
+            if not article or not ref_question or not answer_text:
+                continue
+
+            # Generate question using template QG
+            gen_questions = generate_questions(article, answer_text,
+                                               ranker=qg_ranker,
+                                               feat_cols=qg_feat_cols,
+                                               top_k=1)
+            if not gen_questions:
+                continue
+            gen_q = gen_questions[0]
+
+            # Tokenize for BLEU/METEOR
+            ref_tokens = ref_question.lower().split()
+            gen_tokens = gen_q.lower().split()
+
+            if not ref_tokens or not gen_tokens:
+                continue
+
+            # ── BLEU (1-gram to 4-gram with smoothing) ───────────────────────
+            bleu = sentence_bleu(
+                [ref_tokens], gen_tokens,
+                weights=(0.25, 0.25, 0.25, 0.25),
+                smoothing_function=smooth
+            )
+            bleu_scores.append(bleu)
+
+            # ── ROUGE ────────────────────────────────────────────────────────
+            if rouge_scorer:
+                r_result = r_scorer.score(ref_question.lower(), gen_q.lower())
+                rouge1_scores.append(r_result['rouge1'].fmeasure)
+                rouge2_scores.append(r_result['rouge2'].fmeasure)
+                rougeL_scores.append(r_result['rougeL'].fmeasure)
+
+            # ── METEOR ───────────────────────────────────────────────────────
+            try:
+                m = nltk_meteor([ref_tokens], gen_tokens)
+                meteor_scores.append(m)
+            except Exception:
+                pass
+
+            evaluated += 1
+
+        except Exception:
+            continue
+
+    # ── Aggregate results ────────────────────────────────────────────────────
+    if evaluated == 0:
+        print("  ⚠  No samples could be evaluated.")
+        return None
+
+    results = {
+        "samples_evaluated": evaluated,
+        "bleu_avg":   round(float(np.mean(bleu_scores)), 4)   if bleu_scores   else 0.0,
+        "rouge1_avg": round(float(np.mean(rouge1_scores)), 4) if rouge1_scores else 0.0,
+        "rouge2_avg": round(float(np.mean(rouge2_scores)), 4) if rouge2_scores else 0.0,
+        "rougeL_avg": round(float(np.mean(rougeL_scores)), 4) if rougeL_scores else 0.0,
+        "meteor_avg": round(float(np.mean(meteor_scores)), 4) if meteor_scores else 0.0,
+    }
+
+    # ── Print results ────────────────────────────────────────────────────────
+    print(f"\n── Question Generation Evaluation ({evaluated} samples) ──────────")
+    print(f"  BLEU    (avg) : {results['bleu_avg']:.4f}")
+    print(f"  ROUGE-1 (avg) : {results['rouge1_avg']:.4f}")
+    print(f"  ROUGE-2 (avg) : {results['rouge2_avg']:.4f}")
+    print(f"  ROUGE-L (avg) : {results['rougeL_avg']:.4f}")
+    print(f"  METEOR  (avg) : {results['meteor_avg']:.4f}")
+    print(f"────────────────────────────────────────────────────────────")
+
+    return results
+
+
 # ── ENSEMBLE E1 ───────────────────────────────────────────────────────────────
 def train_ensemble(lr, svm_model, X_dev, X_dev_c, y_dev):
     print("\n[7/7] Soft-Vote Ensemble (LR + SVM) …")
@@ -488,6 +627,12 @@ def main(args):
         print(f"  {name:<23} {a:>16.4f} {f'{f:.4f}' if f else '   —':>14}")
 
     qg_ranker, qg_feat_cols = train_qg_ranker(lex_tr, y_tr)
+
+    # ── Evaluate Question Generation with BLEU / ROUGE / METEOR ──────────
+    r_qg = evaluate_question_generation(dev_orig, qg_ranker, qg_feat_cols,
+                                         max_samples=min(500, len(dev_orig)))
+    if r_qg:
+        results["question_generation"] = r_qg
 
     r_ens  = train_ensemble(lr, svm, X_dev, X_dev_c, y_dev)
     r_test = run_final_test(lr, svm, X_te, X_te_c, y_te)

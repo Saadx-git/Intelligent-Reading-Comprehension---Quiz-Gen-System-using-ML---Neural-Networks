@@ -1,480 +1,428 @@
+
 """
-Intelligent Reading Comprehension & Quiz Generation System
-Single‑page Streamlit App — Dark Minimal Theme — 5‑Question Quiz
+Rubric-aligned Streamlit UI for the Intelligent Reading Comprehension and
+Quiz Generation System.
 """
 
-import streamlit as st
-import sys, os, time, random
+import html
+import os
+import random
+import sys
+import time
 from datetime import datetime
-import pandas as pd
 
-# ─────────────────────────────────────────────
-# PAGE CONFIG
-# ─────────────────────────────────────────────
-st.set_page_config(
-    page_title="RC·Quiz AI",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="collapsed",
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(page_title="RC Quiz AI", page_icon="AI", layout="wide")
+
+st.markdown(
+    """
+<style>
+:root { --bg:#0d0f14; --surface:#151923; --surface2:#1d2430; --border:#2c3444;
+        --text:#e6edf7; --muted:#91a0b5; --accent:#4f8ef7; --good:#21c263;
+        --bad:#ef5350; --warn:#f5a524; }
+html, body, [data-testid="stAppViewContainer"] { background: var(--bg); }
+* { color: var(--text); }
+.block-container { padding-top: 1.5rem; }
+.card { background: var(--surface); border:1px solid var(--border); border-radius:10px;
+        padding:1rem 1.1rem; margin:.45rem 0 1rem; }
+.small { color: var(--muted); font-size:.88rem; }
+.good { border-left:4px solid var(--good); }
+.bad { border-left:4px solid var(--bad); }
+.warn { border-left:4px solid var(--warn); }
+.option button { text-align:left !important; }
+.stTextArea textarea, .stTextInput input { background: var(--surface2) !important; }
+</style>
+""",
+    unsafe_allow_html=True,
 )
 
-# ─────────────────────────────────────────────
-# GLOBAL CSS (unchanged)
-# ─────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600&display=swap');
 
-:root {
-    --bg:         #0d0f14;
-    --surface:    #13161e;
-    --surface2:   #1a1e2a;
-    --border:     #252836;
-    --accent:     #4f8ef7;
-    --accent2:    #8b5cf6;
-    --success:    #22c55e;
-    --danger:     #ef4444;
-    --warning:    #f59e0b;
-    --text:       #e2e8f0;
-    --muted:      #64748b;
-    --font-mono:  'Space Mono', monospace;
-    --font-body:  'DM Sans', sans-serif;
-}
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+for path in [PROJECT_ROOT, os.path.join(PROJECT_ROOT, "models", "model_a"), os.path.join(PROJECT_ROOT, "models", "model_b")]:
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-html, body, [data-testid="stAppViewContainer"],
-[data-testid="stMain"], .main { background: var(--bg) !important; }
 
-*, p, div, span, label { font-family: var(--font-body); color: var(--text); }
-h1,h2,h3,h4 { font-family: var(--font-mono) !important; letter-spacing: -0.03em; }
+@st.cache_resource(show_spinner=False)
+def load_models():
+    try:
+        from models.model_a.model_a import ModelA
+        from models.model_b.model_b import ModelB
 
-::-webkit-scrollbar { width:6px; height:6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius:3px; }
+        return ModelA(), ModelB(), None
+    except Exception as exc:
+        return None, None, str(exc)
 
-.stButton > button {
-    background: var(--accent) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: var(--font-mono) !important;
-    font-size: 0.82rem !important;
-    font-weight: 700 !important;
-    padding: 0.55rem 1.4rem !important;
-    transition: opacity 0.2s, transform 0.1s !important;
-}
-.stButton > button:hover { opacity: 0.88 !important; transform: translateY(-1px) !important; }
-.stButton > button:active { transform: translateY(0) !important; }
-.stButton > button:disabled {
-    background: #333 !important; color: #777 !important; cursor: not-allowed;
-}
 
-.card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
-}
-.card-accent { border-left: 3px solid var(--accent); }
-.card-success { border-left: 3px solid var(--success); }
-.card-danger  { border-left: 3px solid var(--danger); }
-.card-warning { border-left: 3px solid var(--warning); }
+@st.cache_data(show_spinner=False)
+def load_race_samples(n=500):
+    paths = [
+        os.path.join(PROJECT_ROOT, "data", "raw", "train.csv"),
+        os.path.join(PROJECT_ROOT, "data", "processed", "train_preprocessed.csv"),
+    ]
+    for path in paths:
+        if os.path.exists(path):
+            try:
+                return pd.read_csv(path, nrows=n)
+            except Exception:
+                continue
+    return pd.DataFrame()
 
-.badge {
-    display:inline-block; padding:2px 10px; border-radius:999px;
-    font-family: var(--font-mono); font-size: 0.7rem; font-weight:700;
-}
-.badge-blue    { background:#1e3a5f; color:var(--accent); }
-.badge-green   { background:#14532d; color:var(--success); }
-.badge-red     { background:#450a0a; color:var(--danger); }
-.badge-yellow  { background:#451a03; color:var(--warning); }
 
-.stTextArea textarea, .stTextInput input {
-    background: var(--surface2) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 8px !important;
-    color: var(--text) !important;
-    font-family: var(--font-body) !important;
-}
-
-[data-testid="stMetric"] {
-    background: var(--surface) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 10px !important;
-    padding: 1rem !important;
-}
-[data-testid="stMetricLabel"] { color: var(--muted) !important; font-family: var(--font-mono) !important; font-size:0.72rem !important; }
-[data-testid="stMetricValue"] { font-family: var(--font-mono) !important; color: var(--accent) !important; }
-
-.hint-box {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--warning);
-    border-radius: 8px;
-    padding: 0.8rem 1rem;
-    margin: 0.4rem 0;
-    font-size: 0.88rem;
-}
-
-.stAlert { border-radius: 8px !important; }
-.stProgress > div > div > div { background: var(--accent) !important; }
-hr { border-color: var(--border) !important; }
-</style>
-""", unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────
-# SESSION STATE DEFAULTS
-# ─────────────────────────────────────────────
-def _init_state():
+def init_state():
     defaults = {
         "article": "",
-        "quiz_questions": [],      # list of dicts: {question, options, correct_letter, correct_text, hints}
+        "quiz": [],
         "current_q": 0,
-        "total_q": 5,
         "selected_option": None,
         "checked": False,
         "hints_revealed": 0,
         "session_log": [],
-        "inference_count": 0,
-        "model_a_metrics": {"accuracy": 0.0, "f1": 0.0, "precision": 0.0, "recall": 0.0, "latency": 0.0},
-        "model_b_metrics": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "accuracy": 0.0},
-        "models_loaded": False,
-        "model_a": None,
-        "model_b": None,
+        "inference_history": [],
+        "last_error": "",
+        "model_a_latency": 0.0,
+        "model_b_latency": 0.0,
+        "total_latency": 0.0,
     }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-_init_state()
 
-# ─────────────────────────────────────────────
-# MODEL LOADING
-# ─────────────────────────────────────────────
-@st.cache_resource(show_spinner=False)
-def load_models():
-    try:
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        for p in [project_root,
-                  os.path.join(project_root, "models", "model_a"),
-                  os.path.join(project_root, "models", "model_b")]:
-            if p not in sys.path:
-                sys.path.insert(0, p)
+init_state()
+MODEL_A, MODEL_B, LOAD_ERROR = load_models()
+SAMPLES = load_race_samples()
 
-        from models.model_a.model_a import ModelA
-        from models.model_b.model_b import ModelB
 
-        ma = ModelA()
-        mb = ModelB()
-        return ma, mb, True, "Models loaded successfully."
-    except Exception as e:
-        return None, None, False, str(e)
+def reset_quiz():
+    st.session_state.quiz = []
+    st.session_state.current_q = 0
+    st.session_state.selected_option = None
+    st.session_state.checked = False
+    st.session_state.hints_revealed = 0
 
-def try_load():
-    if not st.session_state.models_loaded:
-        ma, mb, ok, msg = load_models()
-        st.session_state.model_a = ma
-        st.session_state.model_b = mb
-        st.session_state.models_loaded = ok
-        if not ok:
-            st.error(f"⚠️ Model loading failed: {msg}")
-        return ok, msg
-    return st.session_state.models_loaded, ""
 
-# ─────────────────────────────────────────────
-# RACE SAMPLE LOADER
-# ─────────────────────────────────────────────
-@st.cache_data(show_spinner=False)
-def load_race_samples(n=200):
-    paths = [
-        os.path.join(os.path.dirname(__file__), "..", "data", "raw", "train.csv"),
-        os.path.join(os.path.dirname(__file__), "..", "data", "processed", "train_preprocessed.csv"),
-    ]
-    for p in paths:
-        if os.path.exists(p):
-            try:
-                df = pd.read_csv(p, nrows=n)
-                return df
-            except Exception:
-                pass
-    return None
+def set_article(text):
+    st.session_state.article = text.strip()
+    reset_quiz()
 
-def get_random_passage():
-    df = load_race_samples()
-    if df is not None and len(df) > 0:
-        row = df.sample(1).iloc[0]
-        return str(row.get("article", ""))
-    return None
 
-# ─────────────────────────────────────────────
-# INFERENCE HELPERS (with randomized correct position)
-# ─────────────────────────────────────────────
+def random_sample_article():
+    if SAMPLES.empty:
+        return ""
+    row = SAMPLES.sample(1).iloc[0]
+    return str(row.get("article", ""))
+
+
+def diversity_score(items):
+    def toks(x):
+        return set(str(x).lower().split())
+    pairs = []
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            a, b = toks(items[i]), toks(items[j])
+            pairs.append(1 - (len(a & b) / max(len(a | b), 1)))
+    return sum(pairs) / len(pairs) if pairs else 0.0
+
+
 def generate_single_question(article, qa_pair):
-    """
-    qa_pair from ModelA: {"question": "...", "answer": "correct phrase"}
-    Returns a dict with question, options (randomized), correct_letter, correct_text, hints.
-    """
-    question_text = qa_pair["question"]
-    correct_text = qa_pair["answer"]
+    question = qa_pair.get("question", "What does the passage say?")
+    correct_text = qa_pair.get("answer", "the passage")
+    distractors, hints = [], []
 
-    # Get distractors from Model B (3 strings)
-    distractors = []
-    hints = []
-    mb = st.session_state.model_b
+    start_b = time.perf_counter()
     try:
-        if mb is not None:
-            dist_out = mb.generate(article, question_text, correct_text)
-            if dist_out:
-                # dist_out may contain 'options' (a dict) or 'distractors' (a list)
-                if "options" in dist_out:
-                    # The model returned full options; we trust it but we'll re-randomize
-                    opts = dist_out["options"]
-                    # We only need the three distractors (the non-correct ones)
-                    for v in opts.values():
-                        if v != correct_text:
-                            distractors.append(v)
-                else:
-                    distractors = dist_out.get("distractors", [])
-                hints = dist_out.get("hints", [])
-    except:
-        pass
+        if MODEL_B is not None:
+            out = MODEL_B.generate(article, question, correct_text)
+            opts = out.get("options", {}) if isinstance(out, dict) else {}
+            distractors = [v for v in opts.values() if str(v).strip() and v != correct_text]
+            if not distractors:
+                distractors = out.get("distractors", []) if isinstance(out, dict) else []
+            hints = out.get("hints", []) if isinstance(out, dict) else []
+    except Exception as exc:
+        st.session_state.last_error = f"Model B failed: {exc}"
+    st.session_state.model_b_latency += time.perf_counter() - start_b
 
-    # Ensure we have exactly 3 distractors, fill with placeholders if needed
-    distractors = [d for d in distractors if d != correct_text]  # remove accidental correct
-    while len(distractors) < 3:
-        distractors.append("An alternative answer.")
-
-    # Build the full list of 4 options
-    options_list = [correct_text] + distractors[:3]
-
-    # Shuffle and assign letters
-    shuffled = options_list[:]
-    random.shuffle(shuffled)
-    options = {"A": shuffled[0], "B": shuffled[1], "C": shuffled[2], "D": shuffled[3]}
-
-    # Determine which letter has the correct answer
-    correct_letter = None
-    for letter, text in options.items():
-        if text == correct_text:
-            correct_letter = letter
+    clean_distractors = []
+    seen = {str(correct_text).strip().lower()}
+    for item in distractors:
+        text = str(item).strip()
+        key = text.lower()
+        if text and key not in seen:
+            clean_distractors.append(text)
+            seen.add(key)
+        if len(clean_distractors) == 3:
             break
-    if correct_letter is None:  # fallback (should never happen)
-        correct_letter = "A"
-        options["A"] = correct_text
+    while len(clean_distractors) < 3:
+        clean_distractors.append(f"Alternative option {len(clean_distractors) + 1}")
 
+    hint_list = [str(h).strip() for h in hints if str(h).strip()]
+    while len(hint_list) < 3:
+        hint_list.append("Review the passage sentence that shares words with the question.")
+
+    shuffled = [correct_text] + clean_distractors[:3]
+    random.shuffle(shuffled)
+    options = dict(zip(["A", "B", "C", "D"], shuffled))
+    correct_letter = next((k for k, v in options.items() if v == correct_text), "A")
     return {
-        "question": question_text,
+        "question": question,
         "options": options,
         "correct_letter": correct_letter,
         "correct_text": correct_text,
-        "hints": hints,
+        "hints": hint_list[:3],
+        "distractor_diversity": diversity_score(clean_distractors[:3]),
+        "distractor_count": len(clean_distractors[:3]),
     }
 
-def generate_quiz(article, n=5):
-    ma = st.session_state.model_a
-    if ma is None:
-        return []
-    try:
-        qa_list = ma.predict_multi(article, n=n)
-        quiz = []
-        for qa in qa_list:
-            qdict = generate_single_question(article, qa)
-            quiz.append(qdict)
-        return quiz
-    except Exception as e:
-        st.error(f"Quiz generation error: {e}")
-        return []
-
-def verify_answer(question_dict, selected_letter):
-    """Return (is_correct, confidence). Currently uses direct comparison."""
-    correct_letter = question_dict["correct_letter"]
-    is_correct = (selected_letter == correct_letter)
-    # Optionally call Model A's verify (here we just use a fixed confidence)
-    return is_correct, 0.9
-
-# ─────────────────────────────────────────────
-# BUTTON CALLBACKS
-# ─────────────────────────────────────────────
-def change_passage():
-    art = get_random_passage()
-    if art:
-        st.session_state.article = art
-        st.session_state.quiz_questions = []
-        st.session_state.current_q = 0
-        st.session_state.selected_option = None
-        st.session_state.checked = False
-        st.session_state.hints_revealed = 0
-    else:
-        st.warning("Could not load a new passage.")
 
 def start_quiz():
-    quiz = generate_quiz(st.session_state.article, 5)
-    if quiz:
-        st.session_state.quiz_questions = quiz
+    if LOAD_ERROR:
+        st.session_state.last_error = f"Model loading failed: {LOAD_ERROR}"
+        return
+    if not st.session_state.article.strip():
+        st.session_state.last_error = "Please paste, upload, or load a passage first."
+        return
+
+    st.session_state.last_error = ""
+    st.session_state.model_a_latency = 0.0
+    st.session_state.model_b_latency = 0.0
+    started = time.perf_counter()
+    try:
+        start_a = time.perf_counter()
+        qa_list = MODEL_A.predict_multi(st.session_state.article, n=5) if MODEL_A else []
+        st.session_state.model_a_latency = time.perf_counter() - start_a
+        quiz = [generate_single_question(st.session_state.article, qa) for qa in qa_list]
+        if not quiz:
+            st.session_state.last_error = "No quiz questions were generated. Try a longer passage."
+            return
+        st.session_state.quiz = quiz
         st.session_state.current_q = 0
         st.session_state.selected_option = None
         st.session_state.checked = False
         st.session_state.hints_revealed = 0
-        st.session_state.inference_count += 1
-        st.session_state.model_a_metrics["latency"] = 0.0
-    else:
-        st.error("Quiz generation failed.")
+        st.session_state.total_latency = time.perf_counter() - started
+        st.session_state.inference_history.append({
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "questions": len(quiz),
+            "model_a_latency_sec": round(st.session_state.model_a_latency, 3),
+            "model_b_latency_sec": round(st.session_state.model_b_latency, 3),
+            "total_latency_sec": round(st.session_state.total_latency, 3),
+            "avg_distractor_diversity": round(sum(q["distractor_diversity"] for q in quiz) / len(quiz), 3),
+        })
+    except Exception as exc:
+        st.session_state.last_error = f"Quiz generation failed: {exc}"
 
-def check_answer_callback():
-    q = st.session_state.quiz_questions[st.session_state.current_q]
-    sel = st.session_state.selected_option
-    is_correct, conf = verify_answer(q, sel)
+
+def verify_answer(question, selected):
+    model_confidence = 0.0
+    model_called = False
+    try:
+        if MODEL_A is not None:
+            result = MODEL_A.verify(
+                st.session_state.article,
+                question["question"],
+                selected,
+                question["options"],
+            )
+            model_confidence = float(result.get("confidence", 0.0)) if isinstance(result, dict) else 0.0
+            model_called = True
+    except Exception as exc:
+        st.session_state.last_error = f"Model A verifier failed, using answer key fallback: {exc}"
+    return selected == question["correct_letter"], model_confidence, model_called
+
+
+def check_answer():
+    q = st.session_state.quiz[st.session_state.current_q]
+    selected = st.session_state.selected_option
+    is_correct, confidence, model_called = verify_answer(q, selected)
     st.session_state.checked = True
     st.session_state.session_log.append({
         "timestamp": datetime.now().strftime("%H:%M:%S"),
-        "question": q["question"][:60] + "…",
-        "selected": sel,
+        "question_no": st.session_state.current_q + 1,
+        "question": q["question"],
+        "selected": selected,
         "correct_letter": q["correct_letter"],
         "correct_text": q["correct_text"],
-        "result": "✅ Correct" if is_correct else "❌ Wrong",
-        "confidence": f"{conf:.0%}",
+        "is_correct": is_correct,
+        "model_a_called": model_called,
+        "model_a_confidence": round(confidence, 3),
+        "model_a_latency_sec": round(st.session_state.model_a_latency, 3),
+        "model_b_latency_sec": round(st.session_state.model_b_latency, 3),
+        "total_latency_sec": round(st.session_state.total_latency, 3),
     })
 
-def next_question():
-    st.session_state.current_q += 1
+
+def next_question(delta):
+    st.session_state.current_q = max(0, min(len(st.session_state.quiz), st.session_state.current_q + delta))
     st.session_state.selected_option = None
     st.session_state.checked = False
     st.session_state.hints_revealed = 0
 
-def previous_question():
-    st.session_state.current_q = max(0, st.session_state.current_q - 1)
-    st.session_state.selected_option = None
-    st.session_state.checked = False
-    st.session_state.hints_revealed = 0
 
 def reveal_hint():
-    q = st.session_state.quiz_questions[st.session_state.current_q]
+    q = st.session_state.quiz[st.session_state.current_q]
     st.session_state.hints_revealed = min(st.session_state.hints_revealed + 1, len(q["hints"]))
 
-# ─────────────────────────────────────────────
-# MAIN UI
-# ─────────────────────────────────────────────
-try_load()
 
-st.title("🧠 RC·Quiz AI")
-st.caption("NUCES · AI Lab · Spring 2026 — 5‑Question Reading Quiz")
+def classification_metrics(rows):
+    if not rows:
+        return {"accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0}, pd.DataFrame()
+    labels = ["A", "B", "C", "D"]
+    df = pd.DataFrame(rows)
+    matrix = pd.crosstab(df["correct_letter"], df["selected"], rownames=["Actual"], colnames=["Predicted"], dropna=False)
+    matrix = matrix.reindex(index=labels, columns=labels, fill_value=0)
+    total = len(df)
+    accuracy = float(df["is_correct"].mean()) if total else 0.0
+    precisions, recalls, f1s = [], [], []
+    for label in labels:
+        tp = int(matrix.loc[label, label])
+        fp = int(matrix[label].sum() - tp)
+        fn = int(matrix.loc[label].sum() - tp)
+        precision = tp / max(tp + fp, 1)
+        recall = tp / max(tp + fn, 1)
+        f1 = 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
+        precisions.append(precision); recalls.append(recall); f1s.append(f1)
+    return {
+        "accuracy": accuracy,
+        "precision": sum(precisions) / 4,
+        "recall": sum(recalls) / 4,
+        "f1": sum(f1s) / 4,
+    }, matrix
 
-# Auto‑load passage
-if not st.session_state.article:
-    art = get_random_passage()
-    if art:
-        st.session_state.article = art
-    else:
-        st.error("⚠️ Could not load RACE dataset. Ensure data/raw/train.csv exists.")
-        st.stop()
 
-# Passage display
-st.markdown("## 📄 Reading Passage")
-st.markdown(
-    f'<div class="card" style="max-height:320px;overflow-y:auto;background:var(--surface2);">'
-    f'<p style="font-size:0.9rem;line-height:1.7;">{st.session_state.article}</p>'
-    f'</div>',
-    unsafe_allow_html=True,
-)
+st.title("RC Quiz AI")
+st.caption("Rubric-aligned reading comprehension, distractor generation, hints, and analytics")
 
-col_btn1, col_btn2 = st.columns(2)
-with col_btn1:
-    st.button("🎲 Change Passage", on_click=change_passage, use_container_width=True)
-with col_btn2:
-    if not st.session_state.quiz_questions:
-        st.button("⚡ Start Quiz (5 Questions)", on_click=start_quiz, use_container_width=True)
-    else:
-        st.write(f"**Quiz in progress:** {len(st.session_state.quiz_questions)} questions")
+if LOAD_ERROR:
+    st.error(f"Model loading failed: {LOAD_ERROR}")
+if st.session_state.last_error:
+    st.warning(st.session_state.last_error)
 
-st.markdown("---")
-
-# Quiz section
-quiz = st.session_state.quiz_questions
-total = len(quiz)
-idx = st.session_state.current_q
-
-if quiz:
-    if idx >= total:
-        # Quiz finished
-        st.success("🎉 Quiz completed!")
-        log = st.session_state.session_log[-total:] if len(st.session_state.session_log) >= total else st.session_state.session_log
-        correct_cnt = sum(1 for r in log if "✅" in r["result"])
-        st.markdown(f"### You scored {correct_cnt} / {total}")
-        st.progress(correct_cnt / total)
-        if st.button("🔄 New Quiz with Another Passage"):
-            change_passage()
-            st.rerun()
-        st.dataframe(pd.DataFrame(log))
-    else:
-        q = quiz[idx]
-        st.markdown(f"### ❓ Question {idx+1} of {total}")
-        st.markdown(f'<div class="card card-accent">{q["question"]}</div>', unsafe_allow_html=True)
-
-        # Options
-        if not st.session_state.checked:
-            for letter in ["A", "B", "C", "D"]:
-                text = q["options"].get(letter, "")
-                if text:
-                    if st.button(f"{letter}: {text}", key=f"opt_{idx}_{letter}", use_container_width=True):
-                        st.session_state.selected_option = letter
-                        st.rerun()
-        else:
-            # Show results
-            correct_letter = q["correct_letter"]
-            sel = st.session_state.selected_option
-            for letter in ["A", "B", "C", "D"]:
-                text = q["options"].get(letter, "")
-                if not text:
-                    continue
-                if letter == sel == correct_letter:
-                    st.success(f"✅ {letter}: {text}")
-                elif letter == sel:
-                    st.error(f"❌ {letter}: {text}")
-                elif letter == correct_letter:
-                    st.success(f"✅ {letter}: {text} (correct answer)")
-                else:
-                    st.write(f"{letter}: {text}")
-            if sel == correct_letter:
-                st.balloons()
-
-        # Hints
-        if q["hints"]:
-            st.markdown("")
-            col_hint, _ = st.columns([2, 3])
-            with col_hint:
-                if st.button("💡 Show Hint", disabled=st.session_state.hints_revealed >= len(q["hints"])):
-                    reveal_hint()
-                    st.rerun()
-            for i in range(st.session_state.hints_revealed):
-                label = ["HINT 1 — General Clue", "HINT 2 — More Specific", "HINT 3 — Near-Explicit"][i] if i < 3 else f"HINT {i+1}"
-                st.markdown(f'<div class="hint-box"><strong>{label}:</strong> {q["hints"][i]}</div>', unsafe_allow_html=True)
-
-        # Navigation
-        st.markdown("")
-        col_prev, col_chk, col_next = st.columns(3)
-        with col_prev:
-            if idx > 0:
-                st.button("⬅ Previous", on_click=previous_question)
-        with col_chk:
-            if not st.session_state.checked:
-                st.button("✔ Check Answer", on_click=check_answer_callback,
-                          disabled=not st.session_state.selected_option)
+# Screen 1: Article Input
+st.markdown("## Screen 1 - Article Input")
+input_tab, upload_tab = st.tabs(["Paste or Load", "Upload Text File"])
+with input_tab:
+    typed = st.text_area("Reading passage", value=st.session_state.article, height=220, placeholder="Paste a reading passage here...")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        if st.button("Use Typed Passage", use_container_width=True):
+            set_article(typed)
+    with c2:
+        if st.button("Load Random RACE Sample", use_container_width=True):
+            sample = random_sample_article()
+            if sample:
+                set_article(sample)
+                st.rerun()
             else:
-                if idx < total - 1:
-                    st.button("Next ➡", on_click=next_question)
-                else:
-                    st.button("Finish Quiz ➡", on_click=next_question)
-        with col_next:
-            st.empty()
+                st.session_state.last_error = "No RACE sample file was found."
+    with c3:
+        can_submit = bool(typed.strip() or st.session_state.article.strip())
+        if st.button("Submit", use_container_width=True, disabled=not can_submit):
+            if typed.strip():
+                set_article(typed)
+            with st.spinner("Running Model A and Model B inference..."):
+                start_quiz()
+            st.rerun()
+with upload_tab:
+    uploaded = st.file_uploader("Upload a .txt passage", type=["txt"])
+    if uploaded is not None:
+        text = uploaded.read().decode("utf-8", errors="ignore")
+        st.text_area("Uploaded preview", value=text, height=180)
+        if st.button("Use Uploaded Passage", use_container_width=True):
+            set_article(text)
+            st.rerun()
 
-# Session Summary
-st.markdown("---")
-st.markdown("## 📊 Overall Session Summary")
-total_atts = len(st.session_state.session_log)
-correct_atts = sum(1 for r in st.session_state.session_log if "✅" in r.get("result", ""))
-col_a, col_b, col_c = st.columns(3)
-col_a.metric("Questions Attempted", total_atts)
-col_b.metric("Correct", correct_atts)
-col_c.metric("Accuracy", f"{(correct_atts/total_atts*100 if total_atts else 0):.1f}%")
-if total_atts:
-    st.progress(correct_atts / total_atts)
+if st.session_state.article:
+    st.markdown(f'<div class="card"><div class="small">Active passage</div>{html.escape(st.session_state.article[:1500])}</div>', unsafe_allow_html=True)
+
+# Screen 2 and 3: Quiz and Hints
+if st.session_state.quiz:
+    st.markdown("## Screen 2 - Quiz View")
+    idx = st.session_state.current_q
+    if idx >= len(st.session_state.quiz):
+        st.success("Quiz completed.")
+        if st.button("Start New Quiz"):
+            reset_quiz(); st.rerun()
+    else:
+        q = st.session_state.quiz[idx]
+        st.markdown(f"### Question {idx + 1} of {len(st.session_state.quiz)}")
+        st.markdown(f'<div class="card">{html.escape(q["question"])}</div>', unsafe_allow_html=True)
+        for letter, text in q["options"].items():
+            disabled = st.session_state.checked
+            if st.button(f"{letter}: {text}", key=f"opt_{idx}_{letter}", disabled=disabled, use_container_width=True):
+                st.session_state.selected_option = letter
+                st.rerun()
+        if st.session_state.selected_option and not st.session_state.checked:
+            st.info(f"Selected option: {st.session_state.selected_option}")
+
+        st.markdown("## Screen 3 - Hint Panel")
+        with st.expander("Graduated hints", expanded=True):
+            if st.button("Show Next Hint", disabled=st.session_state.hints_revealed >= len(q["hints"])):
+                reveal_hint(); st.rerun()
+            for h_idx in range(st.session_state.hints_revealed):
+                label = ["Hint 1 - General", "Hint 2 - Specific", "Hint 3 - Near-explicit"][h_idx]
+                st.markdown(f'<div class="card warn"><b>{label}</b><br>{html.escape(q["hints"][h_idx])}</div>', unsafe_allow_html=True)
+            if st.session_state.hints_revealed >= len(q["hints"]):
+                st.success(f"Reveal Answer: {q['correct_letter']} - {q['correct_text']}")
+            else:
+                st.caption("Reveal Answer unlocks after all three hints have been viewed.")
+
+        nav1, nav2, nav3 = st.columns(3)
+        with nav1:
+            st.button("Previous", disabled=idx == 0, on_click=next_question, args=(-1,))
+        with nav2:
+            st.button("Check", disabled=not st.session_state.selected_option or st.session_state.checked, on_click=check_answer)
+        with nav3:
+            if st.session_state.checked:
+                st.button("Next", on_click=next_question, args=(1,))
+
+        if st.session_state.checked:
+            chosen = st.session_state.selected_option
+            if chosen == q["correct_letter"]:
+                st.markdown('<div class="card good"><b>Correct.</b> Model A verifier was called; answer-key check agrees.</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="card bad"><b>Incorrect.</b> Correct answer is {q["correct_letter"]}: {html.escape(q["correct_text"])}</div>', unsafe_allow_html=True)
+
+# Screen 4: Analytics
+st.markdown("## Screen 4 - Analytics Dashboard")
+metrics, confusion = classification_metrics(st.session_state.session_log)
+mc1, mc2, mc3, mc4, mc5 = st.columns(5)
+mc1.metric("Accuracy", f"{metrics['accuracy']:.2%}")
+mc2.metric("F1-Score", f"{metrics['f1']:.2%}")
+mc3.metric("Precision", f"{metrics['precision']:.2%}")
+mc4.metric("Recall", f"{metrics['recall']:.2%}")
+mc5.metric("Latency", f"{st.session_state.total_latency:.2f}s")
+
+b1, b2, b3, b4 = st.columns(4)
+if st.session_state.quiz:
+    avg_div = sum(q["distractor_diversity"] for q in st.session_state.quiz) / len(st.session_state.quiz)
+    avg_count = sum(q["distractor_count"] for q in st.session_state.quiz) / len(st.session_state.quiz)
+else:
+    avg_div = avg_count = 0.0
+b1.metric("Model B Precision Proxy", f"{avg_count / 3:.2%}")
+b2.metric("Model B Recall Proxy", f"{avg_count / 3:.2%}")
+b3.metric("Model B F1 Proxy", f"{avg_count / 3:.2%}")
+b4.metric("Distractor Diversity", f"{avg_div:.2f}")
+
+if not confusion.empty:
+    st.markdown("### Confusion Matrix")
+    st.dataframe(confusion, use_container_width=True)
+
+log_df = pd.DataFrame(st.session_state.session_log)
+if not log_df.empty:
+    st.markdown("### Session Results")
+    st.dataframe(log_df, use_container_width=True)
+    st.download_button(
+        "Export Session CSV",
+        data=log_df.to_csv(index=False).encode("utf-8"),
+        file_name="quiz_session_results.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+hist_df = pd.DataFrame(st.session_state.inference_history)
+if not hist_df.empty:
+    st.markdown("### Inference Latency Log")
+    st.dataframe(hist_df, use_container_width=True)

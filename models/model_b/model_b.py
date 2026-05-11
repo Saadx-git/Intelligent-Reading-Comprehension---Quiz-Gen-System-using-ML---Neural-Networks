@@ -70,6 +70,10 @@ import pickle
 import logging
 import argparse
 import warnings
+try:
+    import joblib
+except ImportError:
+    joblib = None
 import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
@@ -116,6 +120,25 @@ TFIDF_VEC_PATH  = os.path.join(DATA_PROC, "tfidf_vectorizer.pkl")
 
 DIST_MODEL_PATH = os.path.join(MODEL_DIR, "distractor_ranker.pkl")
 HINT_MODEL_PATH = os.path.join(MODEL_DIR, "hint_scorer.pkl")
+TRADITIONAL_DIR = os.path.join(MODEL_DIR, "traditional")
+EVAL_METRICS_CSV = os.path.join(TRADITIONAL_DIR, "evaluation_metrics.csv")
+EVAL_METRICS_PKL = os.path.join(TRADITIONAL_DIR, "evaluation_metrics.pkl")
+
+def load_artifact(path):
+    """Load artifacts saved with either pickle or joblib."""
+    try:
+        with open(path, "rb") as f:
+            return pickle.load(f)
+    except Exception as pickle_error:
+        if joblib is None:
+            raise RuntimeError(f"Could not load {path}. pickle error: {pickle_error}; joblib is not installed")
+        try:
+            return joblib.load(path)
+        except Exception as joblib_error:
+            raise RuntimeError(
+                f"Could not load {path}. pickle error: {pickle_error}; "
+                f"joblib error: {joblib_error}"
+            )
 
 # Training hyper-parameters
 MAX_TRAIN_ROWS   = 30_000   # cap for speed — set None to use all
@@ -207,8 +230,7 @@ def load_or_build_vectorizers(corpus: List[str]) -> Tuple:
 
     if os.path.exists(OHE_VEC_PATH):
         try:
-            with open(OHE_VEC_PATH, "rb") as f:
-                ohe_vec = pickle.load(f)
+            ohe_vec = load_artifact(OHE_VEC_PATH)
             log.info("Loaded OHE vectorizer from disk.")
             ohe_loaded = True
         except Exception as e:
@@ -216,8 +238,7 @@ def load_or_build_vectorizers(corpus: List[str]) -> Tuple:
     
     if os.path.exists(TFIDF_VEC_PATH):
         try:
-            with open(TFIDF_VEC_PATH, "rb") as f:
-                tfidf_vec = pickle.load(f)
+            tfidf_vec = load_artifact(TFIDF_VEC_PATH)
             log.info("Loaded TF-IDF vectorizer from disk.")
             tfidf_loaded = True
         except Exception as e:
@@ -752,6 +773,158 @@ def evaluate_hint_scorer(model, X: np.ndarray, y: np.ndarray, name: str = "Dev")
     return {"accuracy": acc, "precision": prec, "recall": rec, "f1": f1, "r2": r2}
 
 
+def _norm_text(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", str(text).lower())).strip()
+
+
+def _rouge_l_f1(reference: str, prediction: str) -> float:
+    ref = _norm_text(reference).split()
+    pred = _norm_text(prediction).split()
+    if not ref or not pred:
+        return 0.0
+    dp = [[0] * (len(pred) + 1) for _ in range(len(ref) + 1)]
+    for i, rt in enumerate(ref, 1):
+        for j, pt in enumerate(pred, 1):
+            dp[i][j] = dp[i - 1][j - 1] + 1 if rt == pt else max(dp[i - 1][j], dp[i][j - 1])
+    lcs = dp[-1][-1]
+    precision = lcs / len(pred)
+    recall = lcs / len(ref)
+    return 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
+
+
+def _generation_scores(golds: List[str], preds: List[str]) -> Dict[str, float]:
+    """
+    Rubric-facing distractor generation metrics.
+    Each generated distractor is scored against its best matching gold wrong option.
+    """
+    golds = [g for g in golds if _norm_text(g)]
+    preds = [p for p in preds if _norm_text(p) and p != "-"]
+    if not golds or not preds:
+        return {"bleu": 0.0, "rouge_l": 0.0, "meteor": 0.0}
+
+    try:
+        from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+        smoother = SmoothingFunction().method1
+        def bleu_one(ref, pred):
+            return sentence_bleu([_norm_text(ref).split()], _norm_text(pred).split(), smoothing_function=smoother)
+    except Exception:
+        def bleu_one(ref, pred):
+            rt, pt = set(_norm_text(ref).split()), set(_norm_text(pred).split())
+            return len(rt & pt) / max(len(pt), 1)
+
+    try:
+        from nltk.translate.meteor_score import meteor_score
+        def meteor_one(ref, pred):
+            return meteor_score([_norm_text(ref).split()], _norm_text(pred).split())
+    except Exception:
+        def meteor_one(ref, pred):
+            rt, pt = set(_norm_text(ref).split()), set(_norm_text(pred).split())
+            precision = len(rt & pt) / max(len(pt), 1)
+            recall = len(rt & pt) / max(len(rt), 1)
+            return 0.0 if precision + recall == 0 else 2 * precision * recall / (precision + recall)
+
+    bleu_scores, rouge_scores, meteor_scores = [], [], []
+    for pred in preds:
+        bleu_scores.append(max(bleu_one(g, pred) for g in golds))
+        rouge_scores.append(max(_rouge_l_f1(g, pred) for g in golds))
+        meteor_scores.append(max(meteor_one(g, pred) for g in golds))
+
+    return {
+        "bleu": float(np.mean(bleu_scores)),
+        "rouge_l": float(np.mean(rouge_scores)),
+        "meteor": float(np.mean(meteor_scores)),
+    }
+
+
+def evaluate_generated_distractors(
+    df: pd.DataFrame,
+    dist_model,
+    ohe_vec,
+    tfidf_vec,
+    name: str = "Test",
+    max_examples: int = 300,
+) -> Tuple[Dict[str, float], List[Dict]]:
+    """
+    End-to-end generation evaluation required by the rubric:
+    generate top-3 distractors, compare to gold wrong options, and report
+    BLEU/ROUGE-L/METEOR plus recovery/diversity signals.
+    """
+    if df is None or len(df) == 0:
+        return {}, []
+    eval_df = df.head(min(max_examples, len(df))).reset_index(drop=True)
+    rows = []
+    exact_hits = []
+    diversity_scores = []
+    bleu_scores, rouge_scores, meteor_scores = [], [], []
+    wrong_answer_flags = []
+
+    for _, row in eval_df.iterrows():
+        article = str(row.get("article", ""))
+        question = str(row.get("question", ""))
+        answer = get_answer_text(row)
+        golds = get_distractor_texts(row)
+        if not article or not question or not answer or not golds:
+            continue
+        preds = generate_distractors(article, question, answer, dist_model, ohe_vec, tfidf_vec, n=3)
+        pred_norm = {_norm_text(p) for p in preds}
+        gold_norm = {_norm_text(g) for g in golds}
+        answer_norm = _norm_text(answer)
+        hits = len(pred_norm & gold_norm)
+        exact_hits.append(hits / max(len(gold_norm), 1))
+        wrong_answer_flags.append(float(answer_norm not in pred_norm))
+        pairwise = []
+        for i in range(len(preds)):
+            for j in range(i + 1, len(preds)):
+                pairwise.append(1.0 - jaccard(preds[i], preds[j]))
+        diversity_scores.append(float(np.mean(pairwise)) if pairwise else 0.0)
+        gen_scores = _generation_scores(golds, preds)
+        bleu_scores.append(gen_scores["bleu"])
+        rouge_scores.append(gen_scores["rouge_l"])
+        meteor_scores.append(gen_scores["meteor"])
+        rows.append({
+            "question": question,
+            "answer": answer,
+            "gold_distractors": golds,
+            "generated_distractors": preds,
+            "exact_recovery": hits / max(len(gold_norm), 1),
+            **gen_scores,
+        })
+
+    metrics = {
+        "n_examples": len(rows),
+        "exact_recovery_at_3": float(np.mean(exact_hits)) if exact_hits else 0.0,
+        "accuracy_not_answer": float(np.mean(wrong_answer_flags)) if wrong_answer_flags else 0.0,
+        "diversity": float(np.mean(diversity_scores)) if diversity_scores else 0.0,
+        "bleu": float(np.mean(bleu_scores)) if bleu_scores else 0.0,
+        "rouge_l": float(np.mean(rouge_scores)) if rouge_scores else 0.0,
+        "meteor": float(np.mean(meteor_scores)) if meteor_scores else 0.0,
+    }
+
+    log.info(f"\n{'='*55}")
+    log.info(f"Distractor Generation - {name} Set")
+    log.info(f"  Examples          : {metrics['n_examples']}")
+    log.info(f"  Exact Recovery@3  : {metrics['exact_recovery_at_3']:.4f}")
+    log.info(f"  Not-answer Acc.   : {metrics['accuracy_not_answer']:.4f}")
+    log.info(f"  Diversity         : {metrics['diversity']:.4f}")
+    log.info(f"  BLEU              : {metrics['bleu']:.4f}")
+    log.info(f"  ROUGE-L           : {metrics['rouge_l']:.4f}")
+    log.info(f"  METEOR            : {metrics['meteor']:.4f}")
+    log.info(f"{'='*55}\n")
+    return metrics, rows
+
+
+def save_rubric_metrics(rows: List[Dict], generated_rows: List[Dict]) -> None:
+    os.makedirs(TRADITIONAL_DIR, exist_ok=True)
+    metrics_df = pd.DataFrame(rows)
+    metrics_df.to_csv(EVAL_METRICS_CSV, index=False)
+    if joblib is not None:
+        joblib.dump({"metrics": rows, "generated_examples": generated_rows}, EVAL_METRICS_PKL)
+    else:
+        with open(EVAL_METRICS_PKL, "wb") as f:
+            pickle.dump({"metrics": rows, "generated_examples": generated_rows}, f)
+    log.info(f"Rubric metrics saved -> {EVAL_METRICS_CSV}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 10.  INFERENCE — GENERATE DISTRACTORS & HINTS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -905,12 +1078,10 @@ def save_models(dist_model, hint_model):
 def load_models():
     dist_model = hint_model = None
     if os.path.exists(DIST_MODEL_PATH):
-        with open(DIST_MODEL_PATH, "rb") as f:
-            dist_model = pickle.load(f)
+        dist_model = load_artifact(DIST_MODEL_PATH)
         log.info("Distractor model loaded.")
     if os.path.exists(HINT_MODEL_PATH):
-        with open(HINT_MODEL_PATH, "rb") as f:
-            hint_model = pickle.load(f)
+        hint_model = load_artifact(HINT_MODEL_PATH)
         log.info("Hint model loaded.")
     return dist_model, hint_model
 
@@ -951,76 +1122,75 @@ def load_data():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def run_train(sample_size: Optional[int] = None):
-    log.info("══ MODEL B TRAINING ══")
+    log.info("MODEL B TRAINING")
 
-    # 1. Load data
     train_df, dev_df, test_df = load_data()
 
-    # 2. Subsample if fast‑test mode is active
     if sample_size is not None:
-        log.info(f"Fast‑test mode: limiting train/dev to {sample_size} rows, test to {max(1, sample_size // 5)}")
+        log.info(f"Fast-test mode: train/dev={sample_size}, test={max(1, sample_size // 5)}")
         train_df = train_df.sample(n=min(sample_size, len(train_df)), random_state=RANDOM_SEED)
         if dev_df is not None:
             dev_df = dev_df.sample(n=min(sample_size, len(dev_df)), random_state=RANDOM_SEED)
         if test_df is not None:
             test_df = test_df.sample(n=min(max(1, sample_size // 5), len(test_df)), random_state=RANDOM_SEED)
 
-    # 3. Build / load vectorizers from training corpus (already subsampled)
-    corpus = (
-        train_df["article"].fillna("").tolist() +
-        train_df["question"].fillna("").tolist()
-    )
+    corpus = train_df["article"].fillna("").tolist() + train_df["question"].fillna("").tolist()
     ohe_vec, tfidf_vec = load_or_build_vectorizers(corpus)
 
-    # 4. Build distractor training set (using subsampled data)
-    log.info("\n── Building distractor training set ──")
+    log.info("\nBuilding distractor training set")
     max_rows = sample_size if sample_size else MAX_TRAIN_ROWS
     X_dist_tr, y_dist_tr = build_distractor_dataset(train_df, ohe_vec, tfidf_vec, max_rows)
 
-    # 5. Build hint training set
-    log.info("\n── Building hint training set ──")
+    log.info("\nBuilding hint training set")
     X_hint_tr, y_hint_tr = build_hint_dataset(train_df, max_rows)
 
-    # 6. Train
     dist_model = train_distractor_ranker(X_dist_tr, y_dist_tr)
     hint_model = train_hint_scorer(X_hint_tr, y_hint_tr)
 
-    # 7. Dev evaluation (optional: if dev data exists)
+    metric_rows = []
+    generated_rows = []
     if dev_df is not None and len(dev_df) > 0:
-        log.info("\n── Dev Evaluation ──")
-        # Further subsample dev for speed if needed
+        log.info("\nDev Evaluation")
         dev_eval = dev_df.head(min(5000, len(dev_df))) if sample_size is None else dev_df
         X_dist_dv, y_dist_dv = build_distractor_dataset(dev_eval, ohe_vec, tfidf_vec)
         X_hint_dv, y_hint_dv = build_hint_dataset(dev_eval)
-        evaluate_distractor_ranker(dist_model, X_dist_dv, y_dist_dv, "Dev")
-        evaluate_hint_scorer(hint_model, X_hint_dv, y_hint_dv, "Dev")
+        dist_metrics = evaluate_distractor_ranker(dist_model, X_dist_dv, y_dist_dv, "Dev")
+        hint_metrics = evaluate_hint_scorer(hint_model, X_hint_dv, y_hint_dv, "Dev")
+        gen_metrics, generated_rows = evaluate_generated_distractors(
+            dev_eval, dist_model, ohe_vec, tfidf_vec, "Dev",
+            max_examples=300 if sample_size is None else min(300, len(dev_eval))
+        )
+        metric_rows.extend([
+            {"Component": "Distractor Ranker", "Split": "dev", **{k: v for k, v in dist_metrics.items() if k != "cm"}},
+            {"Component": "Hint Scorer", "Split": "dev", **hint_metrics},
+            {"Component": "Distractor Generation", "Split": "dev", **gen_metrics},
+        ])
 
-    # 8. Save
     save_models(dist_model, hint_model)
-    log.info("\n✔ Training complete.")
+    if metric_rows:
+        save_rubric_metrics(metric_rows, generated_rows)
+    log.info("\nTraining complete.")
     return dist_model, hint_model, ohe_vec, tfidf_vec
 
 
 def run_eval(sample_size: Optional[int] = None):
-    log.info("══ MODEL B EVALUATION ══")
+    log.info("MODEL B EVALUATION")
     train_df, dev_df, test_df = load_data()
 
-    # Subsample if fast‑test mode is active
     if sample_size is not None:
-        log.info(f"Fast‑test mode: limiting test eval to {max(1, sample_size // 5)} rows")
+        log.info(f"Fast-test mode: limiting test eval to {max(1, sample_size // 5)} rows")
         if test_df is not None:
             test_df = test_df.sample(n=min(max(1, sample_size // 5), len(test_df)), random_state=RANDOM_SEED)
         elif dev_df is not None:
             dev_df = dev_df.sample(n=min(sample_size, len(dev_df)), random_state=RANDOM_SEED)
 
-    # Build vectorizer on training corpus (full or subsampled)
     train_sub = train_df if sample_size is None else train_df.sample(n=min(sample_size, len(train_df)), random_state=RANDOM_SEED)
     corpus = train_sub["article"].fillna("").tolist()
     ohe_vec, tfidf_vec = load_or_build_vectorizers(corpus)
 
     dist_model, hint_model = load_models()
     if dist_model is None or hint_model is None:
-        log.error("Models not found — run with --mode train first.")
+        log.error("Models not found. Run with --mode train first.")
         return
 
     eval_df = test_df if test_df is not None else dev_df
@@ -1033,8 +1203,17 @@ def run_eval(sample_size: Optional[int] = None):
 
     dist_metrics = evaluate_distractor_ranker(dist_model, X_dist, y_dist, "Test")
     hint_metrics = evaluate_hint_scorer(hint_model, X_hint, y_hint, "Test")
-    return dist_metrics, hint_metrics
-
+    gen_metrics, generated_rows = evaluate_generated_distractors(
+        eval_df, dist_model, ohe_vec, tfidf_vec, "Test",
+        max_examples=300 if sample_size is None else min(300, len(eval_df))
+    )
+    metric_rows = [
+        {"Component": "Distractor Ranker", "Split": "test", **{k: v for k, v in dist_metrics.items() if k != "cm"}},
+        {"Component": "Hint Scorer", "Split": "test", **hint_metrics},
+        {"Component": "Distractor Generation", "Split": "test", **gen_metrics},
+    ]
+    save_rubric_metrics(metric_rows, generated_rows)
+    return dist_metrics, hint_metrics, gen_metrics
 
 def run_infer(article: str, question: str, answer: str):
     log.info("══ MODEL B INFERENCE ══")
@@ -1042,11 +1221,9 @@ def run_infer(article: str, question: str, answer: str):
     # Try to load vectorizers; fall back to building on the fly
     ohe_vec = tfidf_vec = None
     if os.path.exists(OHE_VEC_PATH):
-        with open(OHE_VEC_PATH, "rb") as f:
-            ohe_vec = pickle.load(f)
+        ohe_vec = load_artifact(OHE_VEC_PATH)
     if os.path.exists(TFIDF_VEC_PATH):
-        with open(TFIDF_VEC_PATH, "rb") as f:
-            tfidf_vec = pickle.load(f)
+        tfidf_vec = load_artifact(TFIDF_VEC_PATH)
 
     if ohe_vec is None or tfidf_vec is None:
         log.warning("Vectorizers not found — building lightweight inline vecs.")
@@ -1108,11 +1285,9 @@ class ModelB:
     def load(self):
         """Load trained models and vectorizers from disk."""
         if os.path.exists(OHE_VEC_PATH):
-            with open(OHE_VEC_PATH, "rb") as f:
-                self.ohe_vec = pickle.load(f)
+            self.ohe_vec = load_artifact(OHE_VEC_PATH)
         if os.path.exists(TFIDF_VEC_PATH):
-            with open(TFIDF_VEC_PATH, "rb") as f:
-                self.tfidf_vec = pickle.load(f)
+            self.tfidf_vec = load_artifact(TFIDF_VEC_PATH)
         self.dist_model, self.hint_model = load_models()
         self._ready = True
         log.info("ModelB ready.")
@@ -1130,6 +1305,11 @@ class ModelB:
     ) -> Dict:
         if not self._ready:
             self.load()
+
+        if self.ohe_vec is None or self.tfidf_vec is None:
+            docs = [article, question, answer]
+            self.ohe_vec = CountVectorizer(binary=True, ngram_range=(1, 2)).fit(docs)
+            self.tfidf_vec = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True).fit(docs)
 
         distractors = generate_distractors(
             article, question, answer,

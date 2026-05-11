@@ -1,7 +1,4 @@
-Strategy,Split,Precision@3,Recall@3,F1@3,Accuracy_Top1,R2,N_Examples
-Extractive-Dev,dev,0.97,0.97,0.97,0.97,-20.877870240350877,100
-ML-Scored-Dev,dev,0.97,0.97,0.97,0.97,0.41696119621641703,100
-Distractor-RF-Dev,dev,0.006666666666666666,0.006666666666666666,0.006666666666666666,1.0,,100
-Extractive-Test,test,1.0,1.0,1.0,1.0,0.0,20
-ML-Scored-Test,test,1.0,1.0,1.0,1.0,0.0,20
-Distractor-RF-Test,test,0.0,0.0,0.0,1.0,,20
+Component,Split,accuracy,precision,recall,f1,r2,n_examples,exact_recovery_at_3,accuracy_not_answer,diversity,bleu,rouge_l,meteor
+Distractor Ranker,dev,0.9894275330612828,0.9858572949946752,0.964492602625547,0.9750579313250474,,,,,,,,
+Hint Scorer,dev,0.87775,0.9227029654837141,0.8518850987432675,0.8858809801633606,0.6438901893854792,,,,,,,
+Distractor Generation,dev,,,,,,300.0,0.0022222222222222222,1.0,0.9977777777777779,0.007515044299512318,0.05082878414250963,0.032622479974537176

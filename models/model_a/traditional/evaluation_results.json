@@ -1,67 +1,75 @@
 {
   "logistic_regression": {
-    "accuracy": 0.247,
-    "macro_f1": 0.24544516293922636,
-    "exact_match": 0.247,
-    "train_sec": 26.6
+    "accuracy": 0.251,
+    "macro_f1": 0.2453915048100656,
+    "exact_match": 0.251,
+    "train_sec": 16.22
   },
   "svm": {
-    "accuracy": 0.272,
-    "macro_f1": 0.17704671019588145,
-    "exact_match": 0.272,
-    "train_sec": 40.76
+    "accuracy": 0.265,
+    "macro_f1": 0.11788216303470542,
+    "exact_match": 0.265,
+    "train_sec": 102.98
   },
   "naive_bayes": {
-    "accuracy": 0.554,
-    "macro_f1": 0.23554776297580463
+    "accuracy": 0.543,
+    "macro_f1": 0.1885543691268808
   },
   "random_forest": {
-    "accuracy": 0.293,
-    "macro_f1": 0.2871630723821845
+    "accuracy": 0.294,
+    "macro_f1": 0.28798566012534993
   },
   "kmeans": {
-    "purity": 0.274,
-    "silhouette": -0.0439
+    "purity": 0.2764,
+    "silhouette": -0.049
   },
   "label_propagation": {
-    "semi_supervised_f1": 0.09
+    "semi_supervised_f1": 0.1031
   },
   "gmm_bonus": {
-    "purity": 0.2726
+    "purity": 0.2728
+  },
+  "question_generation": {
+    "samples_evaluated": 500,
+    "bleu_avg": 0.0052,
+    "rouge1_avg": 0.0491,
+    "rouge2_avg": 0.0169,
+    "rougeL_avg": 0.0417,
+    "meteor_avg": 0.1166
   },
   "ensemble_dev": {
-    "accuracy": 0.239,
-    "macro_f1": 0.23694703676303294,
-    "exact_match": 0.239
+    "accuracy": 0.255,
+    "macro_f1": 0.24863578481718135,
+    "exact_match": 0.255
   },
   "test_final": {
-    "accuracy": 0.234,
-    "macro_f1": 0.2329,
-    "exact_match": 0.234,
+    "accuracy": 0.237,
+    "macro_f1": 0.2325,
+    "exact_match": 0.237,
     "confusion_matrix": [
       [
-        43,
-        63,
-        56,
-        56
+        38,
+        60,
+        65,
+        39
       ],
       [
-        33,
+        54,
         62,
-        82,
-        85
-      ],
-      [
-        44,
-        81,
-        68,
-        78
+        74,
+        72
       ],
       [
         61,
-        74,
-        53,
-        61
+        77,
+        84,
+        57
+      ],
+      [
+        51,
+        73,
+        80,
+        53
       ]
     ]
   }

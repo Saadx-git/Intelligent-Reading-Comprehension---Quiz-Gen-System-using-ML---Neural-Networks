@@ -48,7 +48,7 @@ def compute_lexical_features(df, desc="Computing lexical features"):
     features["option_B_wc"] = df["B"].str.split().str.len()
     features["option_C_wc"] = df["C"].str.split().str.len()
     features["option_D_wc"] = df["D"].str.split().str.len()
-    print("  ✓ Word counts computed")
+    print("   Word counts computed")
 
     print("  Computing keyword overlaps...")
     article_tokens_list = df["article"].str.split().tolist()
@@ -72,7 +72,7 @@ def compute_lexical_features(df, desc="Computing lexical features"):
         .fillna("")
         .apply(lambda x: hash(x.encode()) % 1000 if x else 0)
     )
-    print(f"  ✓ Lexical features computed: {len(features.columns)} features")
+    print(f"   Lexical features computed: {len(features.columns)} features")
     return features
 
 # ============================================================================
@@ -131,7 +131,7 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
         "test": test_df.reset_index(drop=True),
     }
 
-    print(f"  ✓ Split sizes:")
+    print(f"   Split sizes:")
     print(f"    Train: {len(train_df)}")
     print(f"    Dev:   {len(dev_df)}")
     print(f"    Test:  {len(test_df)}")
@@ -146,7 +146,7 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
         for col in text_columns:
             if col in df.columns:
                 df[col] = df[col].apply(clean)
-        print(f"    ✓ {split} cleaned")
+        print(f"     {split} cleaned")
 
     # ========================================================================
     # 3. Build One-Hot Encoded Vocabulary (on cleaned train set only)
@@ -168,11 +168,11 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     vectorizer = CountVectorizer(binary=True, max_features=20000)
     vectorizer.fit(concatenated_train)
     vocab_size = len(vectorizer.get_feature_names_out())
-    print(f"    ✓ Built vocabulary: {vocab_size} unique terms")
+    print(f"     Built vocabulary: {vocab_size} unique terms")
 
     print("  Transforming all splits...")
     X_train_ohe = vectorizer.transform(concatenated_train)
-    print(f"    ✓ Train shape: {X_train_ohe.shape}")
+    print(f"     Train shape: {X_train_ohe.shape}")
 
     def concat_split(df):
         return (df["article"] + " " + df["question"] + " " +
@@ -180,8 +180,8 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
 
     X_dev_ohe = vectorizer.transform(concat_split(datasets["dev"]))
     X_test_ohe = vectorizer.transform(concat_split(datasets["test"]))
-    print(f"    ✓ Dev shape: {X_dev_ohe.shape}")
-    print(f"    ✓ Test shape: {X_test_ohe.shape}")
+    print(f"     Dev shape: {X_dev_ohe.shape}")
+    print(f"     Test shape: {X_test_ohe.shape}")
 
     # ========================================================================
     # 4. Compute Cosine Similarity Features
@@ -190,7 +190,7 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     sim_features_train = compute_cosine_sim_features(datasets["train"], vectorizer, "Training set")
     sim_features_dev = compute_cosine_sim_features(datasets["dev"], vectorizer, "Dev set")
     sim_features_test = compute_cosine_sim_features(datasets["test"], vectorizer, "Test set")
-    print(f"  ✓ Similarity features shape: {sim_features_train.shape}")
+    print(f"   Similarity features shape: {sim_features_train.shape}")
 
     # ========================================================================
     # 5. Compute Lexical Features
@@ -199,7 +199,7 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     lex_features_train = compute_lexical_features(datasets["train"], "Training set")
     lex_features_dev = compute_lexical_features(datasets["dev"], "Dev set")
     lex_features_test = compute_lexical_features(datasets["test"], "Test set")
-    print(f"  ✓ Lexical features: {lex_features_train.shape[1]} features")
+    print(f"   Lexical features: {lex_features_train.shape[1]} features")
 
     # ========================================================================
     # 6. Save Processed Feature Matrices and Cleaned Splits
@@ -213,30 +213,30 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     joblib.dump(X_train_ohe, output_dir / "X_train_ohe.pkl")
     joblib.dump(X_dev_ohe, output_dir / "X_dev_ohe.pkl")
     joblib.dump(X_test_ohe, output_dir / "X_test_ohe.pkl")
-    print("    ✓ Saved one-hot encoded matrices (.pkl)")
+    print("     Saved one-hot encoded matrices (.pkl)")
 
     joblib.dump(vectorizer, output_dir / "vectorizer.pkl")
-    print("    ✓ Saved vectorizer for inference")
+    print("     Saved vectorizer for inference")
 
     # Save cosine similarity features
     print("  Saving similarity features...")
     sim_features_train.to_csv(output_dir / "sim_features_train.csv", index=False)
     sim_features_dev.to_csv(output_dir / "sim_features_dev.csv", index=False)
     sim_features_test.to_csv(output_dir / "sim_features_test.csv", index=False)
-    print("    ✓ Saved cosine similarity features (.csv)")
+    print("     Saved cosine similarity features (.csv)")
 
     # Save lexical features
     print("  Saving lexical features...")
     lex_features_train.to_csv(output_dir / "lex_features_train.csv", index=False)
     lex_features_dev.to_csv(output_dir / "lex_features_dev.csv", index=False)
     lex_features_test.to_csv(output_dir / "lex_features_test.csv", index=False)
-    print("    ✓ Saved lexical features (.csv)")
+    print("     Saved lexical features (.csv)")
 
     # Save the cleaned, split datasets (with answer column) – names match Model A expectation
     print("  Saving cleaned datasets (as *_processed.csv)...")
     for split, df in datasets.items():
         df.to_csv(output_dir / f"{split}_preprocessed.csv", index=False)
-    print("    ✓ Saved train_processed.csv, dev_processed.csv, test_processed.csv")
+    print("     Saved train_processed.csv, dev_processed.csv, test_processed.csv")
 
     # ========================================================================
     # 7. Optional: TF-IDF Vectorization
@@ -245,7 +245,7 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     print("  Fitting TF-IDF (on training concatenated text)...")
     tfidf_vectorizer = TfidfVectorizer(max_features=20000)
     tfidf_vectorizer.fit(concatenated_train)
-    print(f"    ✓ TF-IDF vocabulary size: {len(tfidf_vectorizer.get_feature_names_out())}")
+    print(f"     TF-IDF vocabulary size: {len(tfidf_vectorizer.get_feature_names_out())}")
 
     print("  Transforming splits...")
     X_train_tfidf = tfidf_vectorizer.transform(concatenated_train)
@@ -257,28 +257,28 @@ def main(total_rows=None, train_frac=0.8, val_frac=0.1):
     joblib.dump(X_dev_tfidf, output_dir / "X_dev_tfidf.pkl")
     joblib.dump(X_test_tfidf, output_dir / "X_test_tfidf.pkl")
     joblib.dump(tfidf_vectorizer, output_dir / "tfidf_vectorizer.pkl")
-    print("    ✓ Saved TF-IDF matrices")
+    print("     Saved TF-IDF matrices")
 
     # ========================================================================
     # Summary
     # ========================================================================
     elapsed_time = time.time() - start_time
     print("\n" + "="*70)
-    print("✓ PREPROCESSING COMPLETE")
+    print(" PREPROCESSING COMPLETE")
     print("="*70)
-    print(f"⏱️  Total execution time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
-    print(f"📁 Output directory: {output_dir.resolve()}")
-    print("\n📊 Files saved:")
-    print("  ✓ One-hot encoded: X_train/dev/test_ohe.pkl + vectorizer.pkl")
-    print("  ✓ Cosine similarity: sim_features_train/dev/test.csv")
-    print("  ✓ Lexical features: lex_features_train/dev/test.csv")
-    print("  ✓ TF-IDF (optional): X_train/dev/test_tfidf.pkl + tfidf_vectorizer.pkl")
-    print("  ✓ Cleaned data: train_processed.csv, dev_processed.csv, test_processed.csv")
-    print("\n📈 Feature summary:")
-    print(f"  • One-hot features: {X_train_ohe.shape[1]}")
-    print(f"  • Cosine similarity features: {sim_features_train.shape[1]}")
-    print(f"  • Lexical features: {lex_features_train.shape[1]}")
-    print(f"  • Total features: {X_train_ohe.shape[1] + sim_features_train.shape[1] + lex_features_train.shape[1]}")
+    print(f"  Total execution time: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
+    print(f" Output directory: {output_dir.resolve()}")
+    print("\n Files saved:")
+    print("   One-hot encoded: X_train/dev/test_ohe.pkl + vectorizer.pkl")
+    print("   Cosine similarity: sim_features_train/dev/test.csv")
+    print("   Lexical features: lex_features_train/dev/test.csv")
+    print("   TF-IDF (optional): X_train/dev/test_tfidf.pkl + tfidf_vectorizer.pkl")
+    print("   Cleaned data: train_processed.csv, dev_processed.csv, test_processed.csv")
+    print("\n Feature summary:")
+    print(f"  One-hot features: {X_train_ohe.shape[1]}")
+    print(f"  Cosine similarity features: {sim_features_train.shape[1]}")
+    print(f"  Lexical features: {lex_features_train.shape[1]}")
+    print(f"  Total features: {X_train_ohe.shape[1] + sim_features_train.shape[1] + lex_features_train.shape[1]}")
     print("\n" + "="*70)
 
 # ============================================================================
